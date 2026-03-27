@@ -13,3 +13,9 @@ class LLMConfig(BaseModel):
         "openai", description="LLM provider (openai, anthropic, gemini)"
     )
     model: str = Field(..., description="Model name")
+    temperature: float = Field(
+        0.3,
+        ge=0.0,
+        le=1.0,
+        description="Model temperature",
+    )
