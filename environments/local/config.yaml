@@ -1,0 +1,7 @@
+auth_server:
+  host: "localhost"
+  port: 8000
+llm:
+  provider: "gemini"
+  model: "gemini-2.5-flash"
+  temperature: 0.3
