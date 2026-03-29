@@ -9,8 +9,8 @@ def get_runtime_context():
 def get_runnable_config() -> RunnableConfig:
     config_dict: dict[str, Any] = {
         "configurable": {
-            "thread_id": "1234",
-            "message_id": "5678",
+            "thread_id": "1234",  # test
+            "message_id": "5678", # test
         },
         "recursion_limit": 50,
     }

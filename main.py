@@ -2,7 +2,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI
+from src.config import get_settings
 from src.apis.analyze import router as analyze_router
+
+get_settings()
 
 app = FastAPI()
 app.include_router(analyze_router)
