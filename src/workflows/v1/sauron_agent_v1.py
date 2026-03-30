@@ -1,3 +1,7 @@
+import re
+
+from langchain_core.messages import BaseMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import SystemMessage
@@ -10,9 +14,9 @@ from src.workflows.models.base_context import BaseContext
 from src.workflows.models.states.base_state import BaseAgentState
 from src.workflows.tools.github_tools import (
     get_installation_context,
+    get_repository_file_paths,
     get_repository_content,
 )
-from langchain_core.runnables import RunnableConfig
 
 class SauronAgent():
     def __init__(
@@ -50,13 +54,90 @@ class SauronAgent():
         return workflow.compile()
 
 
+    def _extract_candidate_file_paths(
+        self,
+        stack_trace: str,
+        repo_file_paths: list[str],
+    ) -> list[str]:
+        if not stack_trace or not repo_file_paths:
+            return []
+
+        direct_matches = [
+            repo_path for repo_path in repo_file_paths
+            if repo_path in stack_trace
+        ]
+
+        trace_paths = re.findall(r'["\']([^"\']+\.[A-Za-z0-9]+)["\']', stack_trace)
+        suffix_matches = [
+            repo_path
+            for repo_path in repo_file_paths
+            if any(trace_path.endswith(repo_path) for trace_path in trace_paths)
+        ]
+
+        file_names = set(
+            re.findall(r'([\w.-]+\.(?:py|js|ts|tsx|jsx|java|kt|go|rb|php|cs|cpp|c|h|hpp|swift|rs|scala|m))', stack_trace)
+        )
+        basename_matches = [
+            repo_path for repo_path in repo_file_paths
+            if repo_path.rsplit("/", 1)[-1] in file_names
+        ]
+
+        ordered_candidates: list[str] = []
+        for candidate in direct_matches + suffix_matches + basename_matches:
+            if candidate not in ordered_candidates:
+                ordered_candidates.append(candidate)
+
+        return ordered_candidates[:20]
+
+
+    def _build_runtime_hint_message(self, candidate_file_paths: list[str]) -> SystemMessage | None:
+        if not candidate_file_paths:
+            return None
+
+        candidate_lines = "\n".join(f"- {path}" for path in candidate_file_paths)
+        return SystemMessage(
+            content=(
+                "Repository file path candidates inferred from the stack trace:\n"
+                f"{candidate_lines}\n"
+                "When calling get_repository_content, prefer choosing from these paths."
+            )
+        )
+
+
+    def _build_llm_messages(
+        self,
+        system_prompt: str,
+        state: BaseAgentState,
+    ) -> list[BaseMessage]:
+        messages: list[BaseMessage] = [SystemMessage(content=system_prompt)]
+
+        runtime_hint_message = self._build_runtime_hint_message(
+            state.get("candidate_file_paths", [])
+        )
+        if runtime_hint_message is not None:
+            messages.append(runtime_hint_message)
+
+        messages.extend(state["messages"])
+        return messages
+
+
     async def prepare(
         self,
         _: BaseAgentState,
         runtime: Runtime[BaseContext],
     ) -> dict:
-        cache_key = get_installation_context(runtime.context.project_id)
-        return {"installation_token_internal_key": cache_key}
+        analyze_request = runtime.context.analyze_request
+        cache_key = get_installation_context(analyze_request.project_id)
+        repo_file_paths = get_repository_file_paths(cache_key)
+        candidate_file_paths = self._extract_candidate_file_paths(
+            stack_trace=analyze_request.stack_trace,
+            repo_file_paths=repo_file_paths,
+        )
+        return {
+            "installation_token_internal_key": cache_key,
+            "repo_file_paths": repo_file_paths,
+            "candidate_file_paths": candidate_file_paths,
+        }
 
 
     async def invoke_llm(
@@ -67,7 +148,7 @@ class SauronAgent():
     ):
         context = getattr(runtime, "context", None)
         system_prompt = context.system_prompt if context else "You are a helpful assistant."
-        messages = [SystemMessage(content=system_prompt)] + state["messages"]
+        messages = self._build_llm_messages(system_prompt=system_prompt, state=state)
 
         response = await self.llm_client_with_tools.ainvoke(messages, config=config)
         return {"messages": [response]}

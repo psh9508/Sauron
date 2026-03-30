@@ -1,7 +1,7 @@
 import base64
 from concurrent.futures import ThreadPoolExecutor
 import json
-from typing import Annotated
+from typing import Annotated, NotRequired, TypedDict
 from urllib.parse import quote, urlparse
 from urllib import error, request
 
@@ -11,14 +11,21 @@ from pydantic import Field
 
 from src.config import get_settings
 
-INSTALLATION_TOKEN_CACHE: dict[str, dict[str, str]] = {}
+
+class InstallationContext(TypedDict):
+    access_token: str
+    repo_url: str
+    repo_file_paths: NotRequired[list[str]]
+
+
+INSTALLATION_TOKEN_CACHE: dict[str, InstallationContext] = {}
 
 
 def _get_installation_cache_key(project_id: int) -> str:
     return f"installation_token_{project_id}"
 
 
-def _get_cached_installation(project_id: int) -> tuple[str, dict[str, str] | None]:
+def _get_cached_installation(project_id: int) -> tuple[str, InstallationContext | None]:
     cache_key = _get_installation_cache_key(project_id)
     return cache_key, INSTALLATION_TOKEN_CACHE.get(cache_key)
 
@@ -69,7 +76,12 @@ def get_installation_context(project_id: int) -> str:
     installation_data = response_body.get("data", {})
     access_token = installation_data.get("access_token")
     repo_url = installation_data.get("repo_url")
-    if not access_token or not repo_url:
+    if (
+        not isinstance(access_token, str)
+        or not access_token
+        or not isinstance(repo_url, str)
+        or not repo_url
+    ):
         raise RuntimeError(
             "Auth server response did not include data.access_token or data.repo_url"
         )
@@ -80,6 +92,85 @@ def get_installation_context(project_id: int) -> str:
     }
 
     return cache_key
+
+
+def get_repository_file_paths(installation_cache_key: str) -> list[str]:
+    installation_context = INSTALLATION_TOKEN_CACHE.get(installation_cache_key)
+    if not installation_context:
+        raise RuntimeError(
+            f"Installation context not found for key: {installation_cache_key}"
+        )
+
+    cached_paths = installation_context.get("repo_file_paths")
+    if isinstance(cached_paths, list):
+        return [path for path in cached_paths if isinstance(path, str)]
+
+    owner, repo = _parse_github_repo(installation_context["repo_url"])
+    access_token = installation_context["access_token"]
+
+    repo_request = request.Request(
+        url=f"https://api.github.com/repos/{owner}/{repo}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {access_token}",
+            "X-GitHub-Api-Version": "2026-03-10",
+        },
+        method="GET",
+    )
+
+    try:
+        with request.urlopen(repo_request) as response:
+            repo_response = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Failed to get repository metadata: {exc.code} {error_body}"
+        ) from exc
+    except error.URLError as exc:
+        raise RuntimeError(
+            f"Failed to connect to GitHub API: {exc.reason}"
+        ) from exc
+
+    default_branch = repo_response.get("default_branch")
+    if not isinstance(default_branch, str) or not default_branch:
+        raise RuntimeError("Repository metadata did not include default_branch")
+
+    tree_request = request.Request(
+        url=f"https://api.github.com/repos/{owner}/{repo}/git/trees/{quote(default_branch, safe='')}?recursive=1",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {access_token}",
+            "X-GitHub-Api-Version": "2026-03-10",
+        },
+        method="GET",
+    )
+
+    try:
+        with request.urlopen(tree_request) as response:
+            tree_response = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Failed to get repository tree: {exc.code} {error_body}"
+        ) from exc
+    except error.URLError as exc:
+        raise RuntimeError(
+            f"Failed to connect to GitHub API: {exc.reason}"
+        ) from exc
+
+    tree_items = tree_response.get("tree", [])
+    if not isinstance(tree_items, list):
+        raise RuntimeError("Repository tree response did not include a valid tree")
+
+    repo_file_paths = [
+        item["path"]
+        for item in tree_items
+        if isinstance(item, dict)
+        and item.get("type") == "blob"
+        and isinstance(item.get("path"), str)
+    ]
+    installation_context["repo_file_paths"] = repo_file_paths
+    return repo_file_paths
 
 
 def _fetch_repository_content(
@@ -151,6 +242,10 @@ def get_repository_content(
         str,
         InjectedState("installation_token_internal_key"),
     ],
+    repo_file_paths: Annotated[
+        list[str],
+        InjectedState("repo_file_paths"),
+    ],
 ) -> dict[str, object]:
     """Fetch the content of one or more repository files for the current project.
 
@@ -167,7 +262,33 @@ def get_repository_content(
     if not paths:
         raise RuntimeError("At least one repository path is required.")
 
-    max_workers = min(len(paths), 8)
+    available_paths = set(repo_file_paths)
+    resolved_paths: list[str] = []
+    for path in paths:
+        normalized_path = path.strip().lstrip("/")
+        if not normalized_path:
+            continue
+
+        if normalized_path in available_paths:
+            resolved_paths.append(normalized_path)
+            continue
+
+        suffix_matches = [
+            repo_path for repo_path in repo_file_paths
+            if repo_path.endswith(normalized_path)
+        ]
+        if len(suffix_matches) == 1:
+            resolved_paths.append(suffix_matches[0])
+            continue
+
+        raise RuntimeError(
+            f"Repository path not found: {normalized_path}"
+        )
+
+    if not resolved_paths:
+        raise RuntimeError("No valid repository paths were provided.")
+
+    max_workers = min(len(resolved_paths), 8)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(
@@ -177,7 +298,7 @@ def get_repository_content(
                 installation_context["access_token"],
                 path,
             )
-            for path in paths
+            for path in resolved_paths
         ]
         files = [future.result() for future in futures]
 

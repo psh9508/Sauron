@@ -66,7 +66,7 @@ async def analyze(request: AnalyzeRequest):
         config=RunnableConfig(),
         context=BaseContext(
             system_prompt=SAURON_SYSTEM_PROMPT,
-            project_id=request.project_id,
+            analyze_request=request,
         ),
     )
     return {"content": _extract_final_response(data)}
