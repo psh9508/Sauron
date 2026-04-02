@@ -1,7 +1,20 @@
 auth_server:
   host: "localhost"
   port: 8000
+
+db:
+  postgres:
+    host: "localhost"
+    port: 54322
+    user: "postgres"
+    password: ${ENV_DB_PASSWORD}
+    database: "sauron_db"
+
 llm:
   provider: "gemini"
   model: "gemini-2.5-flash"
   temperature: 0.3
+
+source_control:
+  github:
+    ENCRYPTION_KEY: ${SCM_PEM_ENCRYPTION_KEY}

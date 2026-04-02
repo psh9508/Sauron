@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  # Core services
+  postgres:
+    image: postgres:15
+    container_name: sauron_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${ENV_DB_PASSWORD}
+      POSTGRES_DB: sauron_db
+    ports:
+      - "54322:5432"
+    volumes:
+      - sauron_data:/var/lib/postgresql/data
+      - ./init/:/docker-entrypoint-initdb.d/
+
+volumes:
+  sauron_data:
