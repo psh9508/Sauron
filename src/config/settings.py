@@ -48,10 +48,18 @@ class SourceControlConfig(BaseModel):
     github: GitHubSourceControlConfig = Field(default_factory=GitHubSourceControlConfig)
 
 
+class CorsConfig(BaseModel):
+    allow_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:5174"],
+        description="Allowed CORS origins",
+    )
+
+
 class AppSettings(BaseModel):
     env: str = Field(..., description="Active runtime environment")
     config_path: Path = Field(..., description="Resolved config file path")
     auth_server: AuthServerConfig = Field(default_factory=AuthServerConfig)
+    cors: CorsConfig = Field(default_factory=CorsConfig)
     db: DatabaseConfig | None = Field(default=None)
     source_control: SourceControlConfig | None = Field(default=None)
     llm: LLMConfig = Field(

@@ -2,6 +2,10 @@ auth_server:
   host: "localhost"
   port: 8000
 
+cors:
+  allow_origins:
+    - "http://localhost:5174"
+
 db:
   postgres:
     host: "localhost"
