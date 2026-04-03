@@ -1,4 +1,5 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -30,11 +31,17 @@ def init_db_session() -> None:
     )
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
+def _get_session_factory() -> async_sessionmaker[AsyncSession]:
     if async_session is None:
         raise RuntimeError("Database session not initialized. Call init_db_session() first.")
+    return async_session
 
-    async with async_session() as session:
+
+@asynccontextmanager
+async def session_scope() -> AsyncIterator[AsyncSession]:
+    session_factory = _get_session_factory()
+
+    async with session_factory() as session:
         try:
             yield session
         except Exception:
@@ -44,3 +51,8 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             await session.commit()
         finally:
             await session.close()
+
+# for Depneds injection in FastAPI
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    async with session_scope() as session:
+        yield session

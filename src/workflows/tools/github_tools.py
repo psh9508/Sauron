@@ -9,7 +9,9 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
-from src.config import get_settings
+from src.apis.models.source_control import ProjectInfo
+from src.core import database
+from src.services.source_control_service import SourceControlService
 
 
 class InstallationContext(TypedDict):
@@ -41,41 +43,19 @@ def _parse_github_repo(repo_url: str) -> tuple[str, str]:
     return owner, repo
 
 
-def get_installation_context(project_id: int) -> str:
+async def get_installation_context(project_id: int) -> str:
     cache_key, cached_installation = _get_cached_installation(project_id)
     if cached_installation:
         return cache_key
 
-    settings = get_settings()
-    url = f"{settings.auth_server.base_url.rstrip('/')}/source_control/access_token"
-    payload = json.dumps({"project_id": project_id}).encode("utf-8")
+    async with database.session_scope() as session:
+        source_control_service = SourceControlService(session)
+        installation_data = await source_control_service.issue_access_token(
+            ProjectInfo(project_id=project_id)
+        )
 
-    http_request = request.Request(
-        url=url,
-        data=payload,
-        headers={
-            "accept": "application/json",
-            "content-type": "application/json",
-        },
-        method="POST",
-    )
-
-    try:
-        with request.urlopen(http_request) as response:
-            response_body = json.loads(response.read().decode("utf-8"))
-    except error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"Failed to get installation token: {exc.code} {error_body}"
-        ) from exc
-    except error.URLError as exc:
-        raise RuntimeError(
-            f"Failed to connect to auth server: {exc.reason}"
-        ) from exc
-
-    installation_data = response_body.get("data", {})
-    access_token = installation_data.get("access_token")
-    repo_url = installation_data.get("repo_url")
+    access_token = installation_data.access_token
+    repo_url = str(installation_data.repo_url)
     if (
         not isinstance(access_token, str)
         or not access_token
@@ -83,7 +63,7 @@ def get_installation_context(project_id: int) -> str:
         or not repo_url
     ):
         raise RuntimeError(
-            "Auth server response did not include data.access_token or data.repo_url"
+            "Source control service did not provide access_token or repo_url"
         )
 
     INSTALLATION_TOKEN_CACHE[cache_key] = {
