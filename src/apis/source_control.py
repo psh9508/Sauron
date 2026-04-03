@@ -24,15 +24,4 @@ async def create_connection(
 ) -> BaseResponseModel[ScmConnectionRes]:
     result = await source_control_service.acreate_connection(request)
     return BaseResponseModel[ScmConnectionRes](data=result)
-
-
-@router.post(
-    "/access_token",
-    response_model=BaseResponseModel[SourceControlAccessTokenRes],
-)
-async def issue_access_token(
-    request: ProjectInfo,
-    source_control_service: SourceControlService = Depends(get_source_control_service),
-) -> BaseResponseModel[SourceControlAccessTokenRes]:
-    result = await source_control_service.issue_access_token(request)
-    return BaseResponseModel[SourceControlAccessTokenRes](data=result)
+    
