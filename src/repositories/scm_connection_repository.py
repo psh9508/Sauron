@@ -13,6 +13,11 @@ class ScmConnectionRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
+    async def aget_all(self) -> list[ScmConnection]:
+        stmt = select(ScmConnection).order_by(ScmConnection.project_id.asc())
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def acreate(
         self,
         project_id: int,

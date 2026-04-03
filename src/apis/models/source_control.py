@@ -34,6 +34,13 @@ class ScmConnectionRes(BaseResponseData):
     updated_at: datetime = Field(..., description="Update time")
 
 
+class ScmConnectionListRes(BaseResponseData):
+    connections: list[ScmConnectionRes] = Field(
+        default_factory=list,
+        description="SCM connection list",
+    )
+
+
 class SourceControlAccessTokenRes(BaseResponseData):
     provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
     access_token: str = Field(..., description="Access token for the source control provider")

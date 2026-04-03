@@ -2,10 +2,9 @@ from fastapi import APIRouter, Depends, status
 
 from src.apis.models.base_response_model import BaseResponseModel
 from src.apis.models.source_control import (
-    ProjectInfo,
     ScmConnectionCreateReq,
+    ScmConnectionListRes,
     ScmConnectionRes,
-    SourceControlAccessTokenRes,
 )
 from src.factories.source_control import get_source_control_service
 from src.services.source_control_service import SourceControlService
@@ -24,4 +23,15 @@ async def create_connection(
 ) -> BaseResponseModel[ScmConnectionRes]:
     result = await source_control_service.acreate_connection(request)
     return BaseResponseModel[ScmConnectionRes](data=result)
-    
+
+
+@router.get(
+    "/connections",
+    response_model=BaseResponseModel[ScmConnectionListRes],
+    status_code=status.HTTP_200_OK,
+)
+async def get_connections(
+    source_control_service: SourceControlService = Depends(get_source_control_service),
+) -> BaseResponseModel[ScmConnectionListRes]:
+    result = await source_control_service.aget_connections()
+    return BaseResponseModel[ScmConnectionListRes](data=result)

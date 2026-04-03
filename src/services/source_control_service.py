@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.apis.models.source_control import (
     ProjectInfo,
     ScmConnectionCreateReq,
+    ScmConnectionListRes,
     ScmConnectionRes,
     SourceControlAccessTokenRes,
 )
@@ -15,6 +16,18 @@ from src.services.source_controlers.base import SourceControlClient
 class SourceControlService:
     def __init__(self, session: AsyncSession | None = None):
         self.scm_connection_repo = ScmConnectionRepository(session) if session is not None else None
+
+    async def aget_connections(self) -> ScmConnectionListRes:
+        if self.scm_connection_repo is None:
+            raise RuntimeError("SCM connection repository is not initialized.")
+
+        scm_connections = await self.scm_connection_repo.aget_all()
+        return ScmConnectionListRes(
+            connections=[
+                ScmConnectionRes.model_validate(scm_connection)
+                for scm_connection in scm_connections
+            ]
+        )
 
     async def issue_access_token(self, project_info: ProjectInfo) -> SourceControlAccessTokenRes:
         if self.scm_connection_repo is None:
