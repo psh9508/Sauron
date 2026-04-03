@@ -43,7 +43,7 @@ def _parse_github_repo(repo_url: str) -> tuple[str, str]:
     return owner, repo
 
 
-async def get_installation_context(project_id: int) -> str:
+async def get_installation_context_cache_key(project_id: int) -> str:
     cache_key, cached_installation = _get_cached_installation(project_id)
     if cached_installation:
         return cache_key
