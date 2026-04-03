@@ -1,7 +1,6 @@
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import declarative_base
 
-Base = declarative_base()
+from src.repositories.schemas.base import Base
 
 
 class ScmConnection(Base):

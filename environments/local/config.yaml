@@ -22,3 +22,8 @@ llm:
 source_control:
   github:
     ENCRYPTION_KEY: ${SCM_PEM_ENCRYPTION_KEY}
+
+log:
+  opensearch:
+    host: "localhost"
+    port: 9200
