@@ -1,72 +1,36 @@
-from fastapi import APIRouter
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig
+from uuid import UUID
 
-from src.apis.models.AnalyzeRequest import AnalyzeRequest
-from src.config import get_settings
-from src.workflows.models.base_context import BaseContext
-from src.workflows.templates.sauron_agent_system_prompt import SAURON_SYSTEM_PROMPT
-from src.workflows.v1.sauron_agent_v1 import SauronAgent
+from fastapi import APIRouter, Depends, status
+
+from src.apis.models.AnalyzeRequest import AnalyzeJobAcceptedRes, AnalyzeJobRes, AnalyzeRequest
+from src.apis.models.base_response_model import BaseResponseModel
+from src.factories.analyze_job import get_analyze_job_service
+from src.services.analyze_job_service import AnalyzeJobService
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
-settings = get_settings()
-
-analyze_workflow = SauronAgent(
-    name="analyze_agent",   
-    llm_config=settings.llm,
-).build_agent()
 
 
-def _extract_text_content(message: AIMessage) -> str:
-    content = message.content
-    if isinstance(content, str):
-        return content
-
-    if isinstance(content, list):
-        text_parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                text_parts.append(item)
-                continue
-
-            if isinstance(item, dict) and item.get("type") == "text":
-                text = item.get("text")
-                if isinstance(text, str):
-                    text_parts.append(text)
-
-        return "\n".join(part for part in text_parts if part)
-
-    return str(content)
+@router.post(
+    "",
+    response_model=BaseResponseModel[AnalyzeJobAcceptedRes],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def analyze(
+    request: AnalyzeRequest,
+    analyze_job_service: AnalyzeJobService = Depends(get_analyze_job_service),
+) -> BaseResponseModel[AnalyzeJobAcceptedRes]:
+    result = await analyze_job_service.acreate_job(request)
+    return BaseResponseModel[AnalyzeJobAcceptedRes](data=result)
 
 
-def _extract_final_response(data: dict) -> str:
-    messages = data.get("messages", [])
-    for message in reversed(messages):
-        if isinstance(message, AIMessage):
-            text = _extract_text_content(message).strip()
-            if text:
-                return text
-
-    raise RuntimeError("Final AI response was not found in workflow output")
-
-@router.post("")
-async def analyze(request: AnalyzeRequest):
-    data = await analyze_workflow.ainvoke(
-        {
-            "messages": [
-                HumanMessage(
-                    content=(
-                        "Analyze the following application error.\n\n"
-                        f"error_message:\n{request.error_message}\n\n"
-                        f"stack_trace:\n{request.stack_trace}"
-                    )
-                )
-            ]
-        },
-        config=RunnableConfig(),
-        context=BaseContext(
-            system_prompt=SAURON_SYSTEM_PROMPT,
-            analyze_request=request,
-        ),
-    )
-    return {"content": _extract_final_response(data)}
+@router.get(
+    "/{job_id}",
+    response_model=BaseResponseModel[AnalyzeJobRes],
+    status_code=status.HTTP_200_OK,
+)
+async def get_analyze_job(
+    job_id: UUID,
+    analyze_job_service: AnalyzeJobService = Depends(get_analyze_job_service),
+) -> BaseResponseModel[AnalyzeJobRes]:
+    result = await analyze_job_service.aget_job(job_id)
+    return BaseResponseModel[AnalyzeJobRes](data=result)

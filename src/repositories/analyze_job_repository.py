@@ -57,6 +57,7 @@ class AnalyzeJobRepository:
                 claimed_at=claim_time,
                 started_at=claim_time,
                 attempt_count=AnalyzeJob.attempt_count + 1,
+                updated_at=claim_time,
             )
             .returning(AnalyzeJob)
         )
@@ -64,13 +65,15 @@ class AnalyzeJobRepository:
         return result.scalar_one_or_none()
 
     async def amark_completed(self, job_id: UUID) -> AnalyzeJob | None:
+        finish_time = datetime.now()
         stmt = (
             update(AnalyzeJob)
             .where(AnalyzeJob.id == job_id)
             .values(
                 status=AnalyzeJobStatus.COMPLETED.value,
-                finished_at=datetime.now(),
+                finished_at=finish_time,
                 error_message=None,
+                updated_at=finish_time,
             )
             .returning(AnalyzeJob)
         )
@@ -78,13 +81,15 @@ class AnalyzeJobRepository:
         return result.scalar_one_or_none()
 
     async def amark_failed(self, job_id: UUID, error_message: str) -> AnalyzeJob | None:
+        finish_time = datetime.now()
         stmt = (
             update(AnalyzeJob)
             .where(AnalyzeJob.id == job_id)
             .values(
                 status=AnalyzeJobStatus.FAILED.value,
-                finished_at=datetime.now(),
+                finished_at=finish_time,
                 error_message=error_message,
+                updated_at=finish_time,
             )
             .returning(AnalyzeJob)
         )

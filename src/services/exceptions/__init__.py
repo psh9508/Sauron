@@ -1,3 +1,4 @@
+from src.services.exceptions.analyze_job_exception import AnalyzeJobNotFoundError
 from src.services.exceptions.app_base_error import AppBaseError
 from src.services.exceptions.source_control_exception import (
     DuplicateScmConnectionError,
@@ -9,6 +10,7 @@ from src.services.exceptions.source_control_exception import (
 )
 
 __all__ = [
+    "AnalyzeJobNotFoundError",
     "AppBaseError",
     "DuplicateScmConnectionError",
     "InvalidSourceControlEncryptionKeyError",
