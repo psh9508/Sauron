@@ -17,15 +17,6 @@ ENVIRONMENTS_DIR = ROOT_DIR / "environments"
 ENV_VAR_PATTERN = re.compile(r"\$\{(?P<braced>[A-Za-z_][A-Za-z0-9_]*)\}|\$(?P<plain>[A-Za-z_][A-Za-z0-9_]*)")
 
 
-class AuthServerConfig(BaseModel):
-    host: str = Field(..., description="Auth server hostname")
-    port: int = Field(..., description="Auth server port")
-
-    @property
-    def base_url(self) -> str:
-        return f"http://{self.host}:{self.port}"
-
-
 class PostgresConfig(BaseModel):
     host: str = Field(..., description="Postgres hostname")
     port: int = Field(default=5432, description="Postgres port")
@@ -58,7 +49,6 @@ class CorsConfig(BaseModel):
 class AppSettings(BaseModel):
     env: str = Field(..., description="Active runtime environment")
     config_path: Path = Field(..., description="Resolved config file path")
-    auth_server: AuthServerConfig = Field(default_factory=AuthServerConfig)
     cors: CorsConfig = Field(default_factory=CorsConfig)
     db: DatabaseConfig | None = Field(default=None)
     source_control: SourceControlConfig | None = Field(default=None)
