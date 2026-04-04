@@ -72,10 +72,14 @@ class AppSettings(BaseModel):
 
 
 def _resolve_environment_name() -> str:
-    env_name = os.getenv("env")
-    if env_name is None or not env_name.strip():
-        raise ValueError("Missing required 'env' value in .env")
-    return env_name.strip()
+    env_name = os.getenv("ENV")
+    if env_name is not None and env_name.strip():
+        return env_name.strip()
+
+    raise ValueError(
+        "Missing runtime environment name. Set ENV. "
+        "A local .env file is optional and only used as a fallback during development."
+    )
 
 
 def _resolve_config_path(env_name: str) -> Path:
@@ -112,9 +116,13 @@ def _load_config_yaml(config_path: Path) -> dict:
 
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
-    load_dotenv()
+    try:
+        env_name = _resolve_environment_name()
+    except ValueError:
+        # Load local development defaults only when the runtime did not inject them.
+        load_dotenv(override=False)
+        env_name = _resolve_environment_name()
 
-    env_name = _resolve_environment_name()
     config_path = _resolve_config_path(env_name)
     raw_config = _load_config_yaml(config_path)
 
