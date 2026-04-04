@@ -1,0 +1,25 @@
+cors:
+  allow_origins:
+    - ""
+
+db:
+  postgres:
+    host: "mimircdkstack-saurondbinstanceff0fa985-ri5kb59hnvc3.c5gqoi66wwnc.ap-northeast-2.rds.amazonaws.com"
+    port: 5432
+    user: "sauron_admin"
+    password: ${ENV_DB_PASSWORD}
+    database: "sauron"
+
+llm:
+  provider: "gemini"
+  model: "gemini-2.5-flash"
+  temperature: 0.3
+
+source_control:
+  github:
+    ENCRYPTION_KEY: ${SCM_PEM_ENCRYPTION_KEY}
+
+log:
+  opensearch:
+    host: "localhost"
+    port: 9200
