@@ -45,6 +45,11 @@ app.include_router(analyze_router)
 app.include_router(source_control_router)
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.exception_handler(AppBaseError)
 async def app_base_error_handler(_: Request, exc: AppBaseError):
     error_data = asdict(exc)
