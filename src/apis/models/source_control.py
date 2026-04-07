@@ -1,9 +1,28 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Any, Literal, Union
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 from src.apis.models.base_response_model import BaseResponseData
+
+
+# Auth config types for different providers
+class GitHubAppAuthConfig(BaseModel):
+    type: Literal["github_app"] = Field(default="github_app", description="Auth type")
+    app_id: str = Field(..., description="GitHub App ID")
+    installation_id: str = Field(..., description="GitHub Installation ID")
+    pem: str = Field(..., description="GitHub App private key PEM contents")
+
+
+class GitLabPatAuthConfig(BaseModel):
+    type: Literal["gitlab_pat"] = Field(default="gitlab_pat", description="Auth type")
+    access_token: str = Field(..., description="GitLab Personal Access Token")
+
+
+AuthConfig = Annotated[
+    Union[GitHubAppAuthConfig, GitLabPatAuthConfig],
+    Field(discriminator="type"),
+]
 
 
 class ScmConnectionCreateReq(BaseModel):
@@ -11,13 +30,15 @@ class ScmConnectionCreateReq(BaseModel):
     provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
     owner: str = Field(..., description="Repository owner")
     repo_name: str = Field(..., description="Repository name")
-    app_id: str = Field(..., description="SCM app ID")
-    installation_id: str = Field(..., description="SCM installation ID")
-    pem: str = Field(..., description="SCM app private key PEM contents")
+    auth_config: AuthConfig = Field(..., description="Authentication configuration")
 
 
 class ProjectInfo(BaseModel):
     project_id: int = Field(..., description="Project ID")
+
+
+class AuthConfigRes(BaseModel):
+    type: str = Field(..., description="Auth type (github_app, gitlab_pat)")
 
 
 class ScmConnectionRes(BaseResponseData):
@@ -27,8 +48,7 @@ class ScmConnectionRes(BaseResponseData):
     provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
     owner: str = Field(..., description="Repository owner")
     repo_name: str = Field(..., description="Repository name")
-    app_id: str = Field(..., description="SCM app ID")
-    installation_id: str = Field(..., description="SCM installation ID")
+    auth_config: AuthConfigRes = Field(..., description="Auth config (sensitive data excluded)")
     is_active: bool = Field(..., description="Whether the connection is active")
     created_at: datetime = Field(..., description="Creation time")
     updated_at: datetime = Field(..., description="Update time")

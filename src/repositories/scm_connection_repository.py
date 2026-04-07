@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlalchemy import insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,9 +26,7 @@ class ScmConnectionRepository:
         provider: str,
         owner: str,
         repo_name: str,
-        app_id: str,
-        installation_id: str,
-        encrypted_pem: str,
+        auth_config: dict[str, Any],
     ) -> ScmConnection:
         try:
             stmt = insert(ScmConnection).values(
@@ -34,9 +34,7 @@ class ScmConnectionRepository:
                 provider=provider,
                 owner=owner,
                 repo_name=repo_name,
-                app_id=app_id,
-                installation_id=installation_id,
-                encrypted_pem=encrypted_pem,
+                auth_config=auth_config,
             ).returning(ScmConnection)
 
             result = await self.session.execute(stmt)

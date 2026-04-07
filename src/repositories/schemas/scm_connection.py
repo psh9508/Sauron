@@ -1,4 +1,5 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, String, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB
 
 from src.repositories.schemas.base import Base
 
@@ -14,9 +15,7 @@ class ScmConnection(Base):
     provider = Column(String(20), nullable=False)
     owner = Column(String(255), nullable=False)
     repo_name = Column(String(255), nullable=False)
-    app_id = Column(String(100), nullable=False)
-    installation_id = Column(String(100), nullable=False)
-    encrypted_pem = Column(Text, nullable=False)
+    auth_config = Column(JSONB, nullable=False)
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

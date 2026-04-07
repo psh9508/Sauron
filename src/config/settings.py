@@ -29,14 +29,10 @@ class DatabaseConfig(BaseModel):
     postgres: PostgresConfig
 
 
-class GitHubSourceControlConfig(BaseModel):
+class SourceControlConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    encryption_key: str = Field(..., alias="ENCRYPTION_KEY", description="SCM PEM encryption key")
-
-
-class SourceControlConfig(BaseModel):
-    github: GitHubSourceControlConfig = Field(default_factory=GitHubSourceControlConfig)
+    encryption_key: str = Field(..., alias="ENCRYPTION_KEY", description="SCM auth encryption key")
 
 
 class CorsConfig(BaseModel):
@@ -106,13 +102,10 @@ def _load_config_yaml(config_path: Path) -> dict:
 
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
-    try:
-        env_name = _resolve_environment_name()
-    except ValueError:
-        # Load local development defaults only when the runtime did not inject them.
-        load_dotenv(override=False)
-        env_name = _resolve_environment_name()
+    # Always load .env file first (won't override existing env vars)
+    load_dotenv(override=False)
 
+    env_name = _resolve_environment_name()
     config_path = _resolve_config_path(env_name)
     raw_config = _load_config_yaml(config_path)
 
