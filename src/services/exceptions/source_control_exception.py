@@ -22,10 +22,14 @@ class InvalidSourceControlRepositoryUrlError(AppBaseError):
 
 
 @dataclass
-class DuplicateScmConnectionError(AppBaseError):
+class DuplicateCodeRepositoryError(AppBaseError):
     status_code = 409
-    code = "DuplicateScmConnectionError"
-    message = "SCM connection already exists"
+    code = "DuplicateCodeRepositoryError"
+    message = "Code repository already exists"
+
+
+# Legacy alias for backwards compatibility
+DuplicateScmConnectionError = DuplicateCodeRepositoryError
 
 
 @dataclass
@@ -43,9 +47,13 @@ class InvalidSourceControlEncryptionKeyError(AppBaseError):
 
 
 @dataclass
-class ScmConnectionNotFoundError(AppBaseError):
+class CodeRepositoryNotFoundError(AppBaseError):
     project_id: int
 
     status_code = 404
-    code = "ScmConnectionNotFoundError"
-    message = "SCM connection not found"
+    code = "CodeRepositoryNotFoundError"
+    message = "Code repository not found"
+
+
+# Legacy alias for backwards compatibility
+ScmConnectionNotFoundError = CodeRepositoryNotFoundError

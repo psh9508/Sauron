@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Literal, Union
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
@@ -25,12 +25,16 @@ AuthConfig = Annotated[
 ]
 
 
-class ScmConnectionCreateReq(BaseModel):
+class RepoInfo(BaseModel):
     project_id: int = Field(..., description="Project ID")
-    provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
     owner: str = Field(..., description="Repository owner")
     repo_name: str = Field(..., description="Repository name")
     auth_config: AuthConfig = Field(..., description="Authentication configuration")
+
+
+class CodeRepositoryCreateReq(BaseModel):
+    provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
+    repo_info: RepoInfo = Field(..., description="Repository information")
 
 
 class ProjectInfo(BaseModel):
@@ -41,23 +45,28 @@ class AuthConfigRes(BaseModel):
     type: str = Field(..., description="Auth type (github_app, gitlab_pat)")
 
 
-class ScmConnectionRes(BaseResponseData):
-    model_config = ConfigDict(from_attributes=True)
-
+class RepoInfoRes(BaseModel):
     project_id: int = Field(..., description="Project ID")
-    provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
     owner: str = Field(..., description="Repository owner")
     repo_name: str = Field(..., description="Repository name")
     auth_config: AuthConfigRes = Field(..., description="Auth config (sensitive data excluded)")
-    is_active: bool = Field(..., description="Whether the connection is active")
+
+
+class CodeRepositoryRes(BaseResponseData):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(..., description="Code repository ID")
+    provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
+    repo_info: RepoInfoRes = Field(..., description="Repository information")
+    is_active: bool = Field(..., description="Whether the repository is active")
     created_at: datetime = Field(..., description="Creation time")
     updated_at: datetime = Field(..., description="Update time")
 
 
-class ScmConnectionListRes(BaseResponseData):
-    connections: list[ScmConnectionRes] = Field(
+class CodeRepositoryListRes(BaseResponseData):
+    repositories: list[CodeRepositoryRes] = Field(
         default_factory=list,
-        description="SCM connection list",
+        description="Code repository list",
     )
 
 
@@ -67,3 +76,9 @@ class SourceControlAccessTokenRes(BaseResponseData):
     token_type: str = Field(default="Bearer", description="Token type")
     expires_at: datetime | None = Field(default=None, description="Token expiration time")
     repo_url: AnyHttpUrl = Field(..., description="Repository URL of the project")
+
+
+# Legacy aliases for backwards compatibility
+ScmConnectionCreateReq = CodeRepositoryCreateReq
+ScmConnectionRes = CodeRepositoryRes
+ScmConnectionListRes = CodeRepositoryListRes

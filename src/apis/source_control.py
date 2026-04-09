@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, status
 
 from src.apis.models.base_response_model import BaseResponseModel
 from src.apis.models.source_control import (
-    ScmConnectionCreateReq,
-    ScmConnectionListRes,
-    ScmConnectionRes,
+    CodeRepositoryCreateReq,
+    CodeRepositoryListRes,
+    CodeRepositoryRes,
 )
 from src.factories.source_control import get_source_control_service
 from src.services.source_control_service import SourceControlService
@@ -13,25 +13,25 @@ router = APIRouter(prefix="/source_control", tags=["source_control"])
 
 
 @router.post(
-    "/connections",
-    response_model=BaseResponseModel[ScmConnectionRes],
+    "/repositories",
+    response_model=BaseResponseModel[CodeRepositoryRes],
     status_code=status.HTTP_201_CREATED,
 )
-async def create_connection(
-    request: ScmConnectionCreateReq,
+async def create_repository(
+    request: CodeRepositoryCreateReq,
     source_control_service: SourceControlService = Depends(get_source_control_service),
-) -> BaseResponseModel[ScmConnectionRes]:
-    result = await source_control_service.acreate_connection(request)
-    return BaseResponseModel[ScmConnectionRes](data=result)
+) -> BaseResponseModel[CodeRepositoryRes]:
+    result = await source_control_service.acreate_repository(request)
+    return BaseResponseModel[CodeRepositoryRes](data=result)
 
 
 @router.get(
-    "/connections",
-    response_model=BaseResponseModel[ScmConnectionListRes],
+    "/repositories",
+    response_model=BaseResponseModel[CodeRepositoryListRes],
     status_code=status.HTTP_200_OK,
 )
-async def get_connections(
+async def get_repositories(
     source_control_service: SourceControlService = Depends(get_source_control_service),
-) -> BaseResponseModel[ScmConnectionListRes]:
-    result = await source_control_service.aget_connections()
-    return BaseResponseModel[ScmConnectionListRes](data=result)
+) -> BaseResponseModel[CodeRepositoryListRes]:
+    result = await source_control_service.aget_repositories()
+    return BaseResponseModel[CodeRepositoryListRes](data=result)

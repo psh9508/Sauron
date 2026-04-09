@@ -1,21 +1,16 @@
-CREATE TABLE IF NOT EXISTS scm_connections (
+CREATE TABLE IF NOT EXISTS code_repositories (
     id BIGSERIAL PRIMARY KEY,
-    project_id BIGINT NOT NULL UNIQUE,
     provider VARCHAR(20) NOT NULL,
-    owner VARCHAR(255) NOT NULL,
-    repo_name VARCHAR(255) NOT NULL,
-    auth_config JSONB NOT NULL,
+    repo_info JSONB NOT NULL,
     is_active BOOL NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    CONSTRAINT ck_scm_connections_provider
-        CHECK (provider IN ('github', 'gitlab')),
-    CONSTRAINT uq_scm_connections_repo
-        UNIQUE (provider, owner, repo_name)
+    CONSTRAINT ck_code_repositories_provider
+        CHECK (provider IN ('github', 'gitlab'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_scm_connections_project_active
-    ON scm_connections (project_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_code_repositories_active
+    ON code_repositories (id, is_active);
 
 CREATE TABLE IF NOT EXISTS analyze_jobs (
     id UUID PRIMARY KEY,
