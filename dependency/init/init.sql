@@ -14,7 +14,7 @@ CREATE INDEX IF NOT EXISTS idx_code_repositories_active
 
 CREATE TABLE IF NOT EXISTS analyze_jobs (
     id UUID PRIMARY KEY,
-    project_id BIGINT NOT NULL,
+    repository_id BIGINT NOT NULL,
     status VARCHAR(20) NOT NULL,
     error_message_input TEXT NOT NULL,
     stack_trace TEXT NOT NULL,
@@ -42,5 +42,5 @@ CREATE TABLE IF NOT EXISTS analyze_job_results (
 CREATE INDEX IF NOT EXISTS idx_analyze_jobs_status_created_at
     ON analyze_jobs (status, created_at);
 
-CREATE INDEX IF NOT EXISTS idx_analyze_jobs_project_created_at
-    ON analyze_jobs (project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analyze_jobs_repository_created_at
+    ON analyze_jobs (repository_id, created_at DESC);

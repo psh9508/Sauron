@@ -16,7 +16,7 @@ class AnalyzeJobRepository:
     async def acreate(
         self,
         job_id: UUID,
-        project_id: int,
+        repository_id: int,
         error_message_input: str,
         stack_trace: str,
     ) -> AnalyzeJob:
@@ -24,7 +24,7 @@ class AnalyzeJobRepository:
             insert(AnalyzeJob)
             .values(
                 id=job_id,
-                project_id=project_id,
+                repository_id=repository_id,
                 status=AnalyzeJobStatus.QUEUED.value,
                 error_message_input=error_message_input,
                 stack_trace=stack_trace,

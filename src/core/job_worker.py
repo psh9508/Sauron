@@ -29,7 +29,7 @@ class AnalyzeJobWorker:
                 continue
 
             request = AnalyzeRequest(
-                project_id=claimed_job.project_id,
+                repository_id=claimed_job.repository_id,
                 error_message=claimed_job.error_message_input,
                 stack_trace=claimed_job.stack_trace,
             )

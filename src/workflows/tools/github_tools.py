@@ -9,7 +9,6 @@ from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
-from src.apis.models.source_control import ProjectInfo
 from src.core import database
 from src.services.source_control_service import SourceControlService
 
@@ -23,12 +22,12 @@ class InstallationContext(TypedDict):
 INSTALLATION_TOKEN_CACHE: dict[str, InstallationContext] = {}
 
 
-def _get_installation_cache_key(project_id: int) -> str:
-    return f"installation_token_{project_id}"
+def _get_installation_cache_key(repository_id: int) -> str:
+    return f"installation_token_{repository_id}"
 
 
-def _get_cached_installation(project_id: int) -> tuple[str, InstallationContext | None]:
-    cache_key = _get_installation_cache_key(project_id)
+def _get_cached_installation(repository_id: int) -> tuple[str, InstallationContext | None]:
+    cache_key = _get_installation_cache_key(repository_id)
     return cache_key, INSTALLATION_TOKEN_CACHE.get(cache_key)
 
 
@@ -43,16 +42,14 @@ def _parse_github_repo(repo_url: str) -> tuple[str, str]:
     return owner, repo
 
 
-async def get_installation_context_cache_key(project_id: int) -> str:
-    cache_key, cached_installation = _get_cached_installation(project_id)
+async def get_installation_context_cache_key(repository_id: int) -> str:
+    cache_key, cached_installation = _get_cached_installation(repository_id)
     if cached_installation:
         return cache_key
 
     async with database.session_scope() as session:
         source_control_service = SourceControlService(session)
-        installation_data = await source_control_service.issue_access_token(
-            ProjectInfo(project_id=project_id)
-        )
+        installation_data = await source_control_service.issue_access_token(repository_id)
 
     access_token = installation_data.access_token
     repo_url = str(installation_data.repo_url)

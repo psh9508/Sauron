@@ -26,7 +26,6 @@ AuthConfig = Annotated[
 
 
 class RepoInfo(BaseModel):
-    project_id: int = Field(..., description="Project ID")
     owner: str = Field(..., description="Repository owner")
     repo_name: str = Field(..., description="Repository name")
     auth_config: AuthConfig = Field(..., description="Authentication configuration")
@@ -37,16 +36,11 @@ class CodeRepositoryCreateReq(BaseModel):
     repo_info: RepoInfo = Field(..., description="Repository information")
 
 
-class ProjectInfo(BaseModel):
-    project_id: int = Field(..., description="Project ID")
-
-
 class AuthConfigRes(BaseModel):
     type: str = Field(..., description="Auth type (github_app, gitlab_pat)")
 
 
 class RepoInfoRes(BaseModel):
-    project_id: int = Field(..., description="Project ID")
     owner: str = Field(..., description="Repository owner")
     repo_name: str = Field(..., description="Repository name")
     auth_config: AuthConfigRes = Field(..., description="Auth config (sensitive data excluded)")

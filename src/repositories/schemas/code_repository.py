@@ -10,7 +10,6 @@ class CodeRepository(Base):
 
     repo_info JSONB structure:
     {
-        "project_id": int,
         "owner": str,
         "repo_name": str,
         "auth_config": {
@@ -28,10 +27,6 @@ class CodeRepository(Base):
     is_active = Column(Boolean, nullable=False, server_default="true")
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
-
-    @property
-    def project_id(self) -> int:
-        return self.repo_info.get("project_id")
 
     @property
     def owner(self) -> str:

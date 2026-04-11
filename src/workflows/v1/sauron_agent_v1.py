@@ -128,7 +128,7 @@ class SauronAgent():
     ) -> dict:
         analyze_request = runtime.context.analyze_request
 
-        cache_key = await get_installation_context_cache_key(analyze_request.project_id)
+        cache_key = await get_installation_context_cache_key(analyze_request.repository_id)
         repo_file_paths = get_repository_file_paths(cache_key)
         candidate_file_paths = self._extract_candidate_file_paths(
             stack_trace=analyze_request.stack_trace,

@@ -16,7 +16,7 @@ class AnalyzeJob(Base):
     __tablename__ = "analyze_jobs"
 
     id = Column(Uuid, primary_key=True)
-    project_id = Column(BigInteger, nullable=False)
+    repository_id = Column(BigInteger, nullable=False)
     status = Column(String(20), nullable=False, default=AnalyzeJobStatus.QUEUED.value)
     error_message_input = Column(Text, nullable=False)
     stack_trace = Column(Text, nullable=False)

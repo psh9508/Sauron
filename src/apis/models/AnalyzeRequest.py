@@ -8,7 +8,7 @@ from src.apis.models.base_response_model import BaseResponseData
 
 
 class AnalyzeRequest(BaseModel):
-    project_id: int = Field(..., description="Project ID to find source code from source control(github, gitlab, etc.)")
+    repository_id: int = Field(..., description="Project ID to find source code from source control(github, gitlab, etc.)")
     error_message: str = Field(..., description="Error message to analyze")
     stack_trace: str = Field(..., description="Stack trace of the error")
 
@@ -20,7 +20,7 @@ class AnalyzeJobAcceptedRes(BaseResponseData):
 
 class AnalyzeJobRes(BaseResponseData):
     job_id: UUID = Field(..., description="Analyze job ID")
-    project_id: int = Field(..., description="Project ID")
+    repository_id: int = Field(..., description="Project ID")
     status: Literal["queued", "running", "completed", "failed"] = Field(
         ...,
         description="Analyze job status",

@@ -22,7 +22,7 @@ class AnalyzeJobService:
         job_id = uuid4()
         created_job = await self.analyze_job_repo.acreate(
             job_id=job_id,
-            project_id=request.project_id,
+            repository_id=request.repository_id,
             error_message_input=request.error_message,
             stack_trace=request.stack_trace,
         )
@@ -65,7 +65,7 @@ class AnalyzeJobService:
     ) -> AnalyzeJobRes:
         return AnalyzeJobRes(
             job_id=job.id,
-            project_id=job.project_id,
+            repository_id=job.repository_id,
             status=job.status,
             result_content=result.result_content if result is not None else None,
             error_message=job.error_message,

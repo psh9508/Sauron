@@ -48,12 +48,8 @@ class InvalidSourceControlEncryptionKeyError(AppBaseError):
 
 @dataclass
 class CodeRepositoryNotFoundError(AppBaseError):
-    project_id: int
+    repository_id: int
 
     status_code = 404
     code = "CodeRepositoryNotFoundError"
     message = "Code repository not found"
-
-
-# Legacy alias for backwards compatibility
-ScmConnectionNotFoundError = CodeRepositoryNotFoundError

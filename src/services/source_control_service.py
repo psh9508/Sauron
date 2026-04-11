@@ -7,7 +7,6 @@ from src.apis.models.source_control import (
     CodeRepositoryCreateReq,
     CodeRepositoryListRes,
     CodeRepositoryRes,
-    ProjectInfo,
     RepoInfoRes,
     SourceControlAccessTokenRes,
 )
@@ -33,11 +32,11 @@ class SourceControlService:
             ]
         )
 
-    async def issue_access_token(self, project_info: ProjectInfo) -> SourceControlAccessTokenRes:
+    async def issue_access_token(self, repository_id: int) -> SourceControlAccessTokenRes:
         if self.code_repo_repository is None:
             raise RuntimeError("Code repository is not initialized.")
 
-        code_repo = await self.code_repo_repository.aget_active_by_project_id(project_info.project_id)
+        code_repo = await self.code_repo_repository.aget_active_by_id(repository_id)
         repo_info = code_repo.repo_info
         repo_url = self._build_repo_url(
             provider=code_repo.provider,
@@ -68,7 +67,6 @@ class SourceControlService:
         encrypted_auth_config = ScmAuthCipher.encrypt_auth_config(auth_config_dict)
 
         repo_info_dict = {
-            "project_id": repo_info.project_id,
             "owner": repo_info.owner,
             "repo_name": repo_info.repo_name,
             "auth_config": encrypted_auth_config,
@@ -90,7 +88,6 @@ class SourceControlService:
             id=code_repo.id,
             provider=code_repo.provider,
             repo_info=RepoInfoRes(
-                project_id=repo_info.get("project_id"),
                 owner=repo_info.get("owner"),
                 repo_name=repo_info.get("repo_name"),
                 auth_config=AuthConfigRes(type=auth_config.get("type", "unknown")),
