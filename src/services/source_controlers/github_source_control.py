@@ -1,17 +1,23 @@
+import base64
 import json
 import os
 from datetime import datetime
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 from src.core.jwt_logic import JwtLogic
 from src.services.exceptions.source_control_exception import InvalidSourceControlRepositoryUrlError
 from src.services.source_control_models import IssuedAccessToken
-from src.services.source_controlers.base import SourceControlClient
+from src.services.source_controlers.base import FileContent, RepositoryInfo, SourceControlClient
 
 
 class GitHubSourceControl(SourceControlClient):
+    """GitHub source control client using GitHub App authentication."""
+
+    API_BASE_URL = "https://api.github.com"
+    API_VERSION = "2022-11-28"
+
     def __init__(
         self,
         app_id: str | None = None,
@@ -110,3 +116,137 @@ class GitHubSourceControl(SourceControlClient):
             raise InvalidSourceControlRepositoryUrlError(repo_url=repo_url)
 
         return repository_name
+
+    def _get_headers(self, access_token: str) -> dict[str, str]:
+        """Get standard GitHub API headers."""
+        return {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {access_token}",
+            "X-GitHub-Api-Version": self.API_VERSION,
+        }
+
+    def _make_request(
+        self,
+        url: str,
+        access_token: str,
+        accept: str | None = None,
+    ) -> dict:
+        """Make a GET request to GitHub API."""
+        headers = self._get_headers(access_token)
+        if accept:
+            headers["Accept"] = accept
+
+        http_request = Request(url=url, headers=headers, method="GET")
+
+        try:
+            with urlopen(http_request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            error_body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"GitHub API request failed: {exc.code} {error_body}"
+            ) from exc
+        except URLError as exc:
+            raise RuntimeError(
+                f"Failed to connect to GitHub API: {exc.reason}"
+            ) from exc
+
+    def parse_repo_url(self, repo_url: str) -> RepositoryInfo:
+        """Parse GitHub repository URL into owner and repo name."""
+        parsed_url = urlparse(repo_url)
+        path_parts = [part for part in parsed_url.path.strip("/").split("/") if part]
+
+        if len(path_parts) < 2:
+            raise InvalidSourceControlRepositoryUrlError(repo_url=repo_url)
+
+        owner = path_parts[0]
+        repo_name = path_parts[1].removesuffix(".git")
+
+        if not owner or not repo_name:
+            raise InvalidSourceControlRepositoryUrlError(repo_url=repo_url)
+
+        return RepositoryInfo(owner=owner, repo_name=repo_name)
+
+    def get_default_branch(self, access_token: str, repo_url: str) -> str:
+        """Get the default branch of the GitHub repository."""
+        repo_info = self.parse_repo_url(repo_url)
+        url = f"{self.API_BASE_URL}/repos/{repo_info.owner}/{repo_info.repo_name}"
+
+        response = self._make_request(url, access_token)
+        default_branch = response.get("default_branch")
+
+        if not isinstance(default_branch, str) or not default_branch:
+            raise RuntimeError("Repository metadata did not include default_branch")
+
+        return default_branch
+
+    def get_repository_tree(
+        self,
+        access_token: str,
+        repo_url: str,
+        branch: str | None = None,
+    ) -> list[str]:
+        """Get all file paths in the GitHub repository."""
+        repo_info = self.parse_repo_url(repo_url)
+
+        if branch is None:
+            branch = self.get_default_branch(access_token, repo_url)
+
+        encoded_branch = quote(branch, safe="")
+        url = (
+            f"{self.API_BASE_URL}/repos/{repo_info.owner}/{repo_info.repo_name}"
+            f"/git/trees/{encoded_branch}?recursive=1"
+        )
+
+        response = self._make_request(url, access_token)
+        tree_items = response.get("tree", [])
+
+        if not isinstance(tree_items, list):
+            raise RuntimeError("Repository tree response did not include a valid tree")
+
+        return [
+            item["path"]
+            for item in tree_items
+            if isinstance(item, dict)
+            and item.get("type") == "blob"
+            and isinstance(item.get("path"), str)
+        ]
+
+    def get_file_content(
+        self,
+        access_token: str,
+        repo_url: str,
+        file_path: str,
+    ) -> FileContent:
+        """Get content of a single file from GitHub repository."""
+        repo_info = self.parse_repo_url(repo_url)
+        normalized_path = file_path.strip().lstrip("/")
+
+        if not normalized_path:
+            raise RuntimeError("A repository path is required.")
+
+        encoded_path = quote(normalized_path, safe="/")
+        url = (
+            f"{self.API_BASE_URL}/repos/{repo_info.owner}/{repo_info.repo_name}"
+            f"/contents/{encoded_path}"
+        )
+
+        response = self._make_request(
+            url,
+            access_token,
+            accept="application/vnd.github.object+json",
+        )
+
+        content = response.get("content", "")
+        encoding = response.get("encoding")
+
+        if encoding == "base64" and content:
+            decoded_content = base64.b64decode(content).decode("utf-8", errors="replace")
+        else:
+            decoded_content = content
+
+        return FileContent(
+            path=response.get("path", normalized_path),
+            content=decoded_content,
+            file_type=response.get("type", "file"),
+        )

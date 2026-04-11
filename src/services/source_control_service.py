@@ -13,7 +13,7 @@ from src.apis.models.source_control import (
 from src.core.scm_pem_cipher import ScmAuthCipher
 from src.repositories.code_repository_repository import CodeRepositoryRepository
 from src.services.exceptions.source_control_exception import UnsupportedSourceControlProviderError
-from src.services.source_controlers.base import SourceControlClient
+from src.services.source_controlers.base import FileContent, SourceControlClient
 
 
 class SourceControlService:
@@ -133,3 +133,82 @@ class SourceControlService:
             return f"https://gitlab.com/{owner}/{repo_name}"
 
         raise UnsupportedSourceControlProviderError(provider=selected_provider)
+
+    async def get_client_for_repository(self, repository_id: int) -> tuple[SourceControlClient, str, str]:
+        """Get a source control client for the given repository.
+
+        Args:
+            repository_id: The ID of the repository
+
+        Returns:
+            Tuple of (client, access_token, repo_url)
+        """
+        if self.code_repo_repository is None:
+            raise RuntimeError("Code repository is not initialized.")
+
+        code_repo = await self.code_repo_repository.aget_active_by_id(repository_id)
+        repo_info = code_repo.repo_info
+        repo_url = self._build_repo_url(
+            provider=code_repo.provider,
+            owner=repo_info.get("owner"),
+            repo_name=repo_info.get("repo_name"),
+        )
+
+        decrypted_auth_config = ScmAuthCipher.decrypt_auth_config(repo_info.get("auth_config", {}))
+        client = self._get_source_control_client(
+            provider=code_repo.provider,
+            auth_config=decrypted_auth_config,
+        )
+
+        issued_token = client.issue_access_token(repo_url)
+
+        return client, issued_token.access_token, repo_url
+
+    async def get_repository_tree(self, repository_id: int, branch: str | None = None) -> list[str]:
+        """Get all file paths in the repository.
+
+        Args:
+            repository_id: The ID of the repository
+            branch: Optional branch name (uses default branch if None)
+
+        Returns:
+            List of file paths
+        """
+        client, access_token, repo_url = await self.get_client_for_repository(repository_id)
+        return client.get_repository_tree(access_token, repo_url, branch)
+
+    async def get_file_content(self, repository_id: int, file_path: str) -> FileContent:
+        """Get content of a single file from the repository.
+
+        Args:
+            repository_id: The ID of the repository
+            file_path: Path to the file relative to repository root
+
+        Returns:
+            FileContent with path and decoded content
+        """
+        client, access_token, repo_url = await self.get_client_for_repository(repository_id)
+        return client.get_file_content(access_token, repo_url, file_path)
+
+    async def get_multiple_file_contents(
+        self,
+        repository_id: int,
+        file_paths: list[str],
+    ) -> list[FileContent]:
+        """Get content of multiple files from the repository.
+
+        Args:
+            repository_id: The ID of the repository
+            file_paths: List of file paths relative to repository root
+
+        Returns:
+            List of FileContent objects
+        """
+        client, access_token, repo_url = await self.get_client_for_repository(repository_id)
+
+        contents: list[FileContent] = []
+        for file_path in file_paths:
+            content = client.get_file_content(access_token, repo_url, file_path)
+            contents.append(content)
+
+        return contents

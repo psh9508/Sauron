@@ -1,9 +1,10 @@
-import base64
+"""Source control tools for LLM agents.
+
+This module provides provider-agnostic tools for interacting with source control
+repositories (GitHub, GitLab, etc.) through the SourceControlService abstraction.
+"""
 from concurrent.futures import ThreadPoolExecutor
-import json
 from typing import Annotated, NotRequired, TypedDict
-from urllib.parse import quote, urlparse
-from urllib import error, request
 
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
@@ -11,59 +12,61 @@ from pydantic import Field
 
 from src.core import database
 from src.services.source_control_service import SourceControlService
+from src.services.source_controlers.base import SourceControlClient
 
 
-class InstallationContext(TypedDict):
+class SourceControlContext(TypedDict):
+    """Cached source control context for a repository."""
+    client: SourceControlClient
     access_token: str
     repo_url: str
     repo_file_paths: NotRequired[list[str]]
 
 
-INSTALLATION_TOKEN_CACHE: dict[str, InstallationContext] = {}
+# Cache for source control contexts, keyed by repository_id
+SOURCE_CONTROL_CACHE: dict[str, SourceControlContext] = {}
 
 
-def _get_installation_cache_key(repository_id: int) -> str:
-    return f"installation_token_{repository_id}"
+def _get_cache_key(repository_id: int) -> str:
+    """Generate cache key for a repository."""
+    return f"source_control_{repository_id}"
 
 
-def _get_cached_installation(repository_id: int) -> tuple[str, InstallationContext | None]:
-    cache_key = _get_installation_cache_key(repository_id)
-    return cache_key, INSTALLATION_TOKEN_CACHE.get(cache_key)
-
-
-def _parse_github_repo(repo_url: str) -> tuple[str, str]:
-    parsed_url = urlparse(repo_url)
-    path_parts = [part for part in parsed_url.path.strip("/").split("/") if part]
-    if len(path_parts) < 2:
-        raise RuntimeError(f"Invalid GitHub repo_url: {repo_url}")
-
-    owner = path_parts[0]
-    repo = path_parts[1].removesuffix(".git")
-    return owner, repo
+def _get_cached_context(repository_id: int) -> tuple[str, SourceControlContext | None]:
+    """Get cached context for a repository if it exists."""
+    cache_key = _get_cache_key(repository_id)
+    return cache_key, SOURCE_CONTROL_CACHE.get(cache_key)
 
 
 async def get_installation_context_cache_key(repository_id: int) -> str:
-    cache_key, cached_installation = _get_cached_installation(repository_id)
-    if cached_installation:
+    """Get or create a cached source control context for the repository.
+
+    This function is provider-agnostic and works with any supported source control
+    provider (GitHub, GitLab, etc.).
+
+    Args:
+        repository_id: The ID of the repository in the database
+
+    Returns:
+        Cache key for the source control context
+    """
+    cache_key, cached_context = _get_cached_context(repository_id)
+    if cached_context:
         return cache_key
 
     async with database.session_scope() as session:
         source_control_service = SourceControlService(session)
-        installation_data = await source_control_service.issue_access_token(repository_id)
+        client, access_token, repo_url = await source_control_service.get_client_for_repository(
+            repository_id
+        )
 
-    access_token = installation_data.access_token
-    repo_url = str(installation_data.repo_url)
-    if (
-        not isinstance(access_token, str)
-        or not access_token
-        or not isinstance(repo_url, str)
-        or not repo_url
-    ):
+    if not access_token or not repo_url:
         raise RuntimeError(
             "Source control service did not provide access_token or repo_url"
         )
 
-    INSTALLATION_TOKEN_CACHE[cache_key] = {
+    SOURCE_CONTROL_CACHE[cache_key] = {
+        "client": client,
         "access_token": access_token,
         "repo_url": repo_url,
     }
@@ -71,132 +74,51 @@ async def get_installation_context_cache_key(repository_id: int) -> str:
     return cache_key
 
 
-def get_repository_file_paths(installation_cache_key: str) -> list[str]:
-    installation_context = INSTALLATION_TOKEN_CACHE.get(installation_cache_key)
-    if not installation_context:
-        raise RuntimeError(
-            f"Installation context not found for key: {installation_cache_key}"
-        )
+def get_repository_file_paths(cache_key: str) -> list[str]:
+    """Get all file paths in the repository.
 
-    cached_paths = installation_context.get("repo_file_paths")
+    This function is provider-agnostic and uses the cached source control client
+    to fetch the repository tree.
+
+    Args:
+        cache_key: Cache key from get_installation_context_cache_key()
+
+    Returns:
+        List of file paths in the repository
+    """
+    context = SOURCE_CONTROL_CACHE.get(cache_key)
+    if not context:
+        raise RuntimeError(f"Source control context not found for key: {cache_key}")
+
+    # Return cached paths if available
+    cached_paths = context.get("repo_file_paths")
     if isinstance(cached_paths, list):
         return [path for path in cached_paths if isinstance(path, str)]
 
-    owner, repo = _parse_github_repo(installation_context["repo_url"])
-    access_token = installation_context["access_token"]
+    # Fetch tree using the abstracted client
+    client = context["client"]
+    access_token = context["access_token"]
+    repo_url = context["repo_url"]
 
-    repo_request = request.Request(
-        url=f"https://api.github.com/repos/{owner}/{repo}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {access_token}",
-            "X-GitHub-Api-Version": "2026-03-10",
-        },
-        method="GET",
-    )
+    repo_file_paths = client.get_repository_tree(access_token, repo_url)
 
-    try:
-        with request.urlopen(repo_request) as response:
-            repo_response = json.loads(response.read().decode("utf-8"))
-    except error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"Failed to get repository metadata: {exc.code} {error_body}"
-        ) from exc
-    except error.URLError as exc:
-        raise RuntimeError(
-            f"Failed to connect to GitHub API: {exc.reason}"
-        ) from exc
-
-    default_branch = repo_response.get("default_branch")
-    if not isinstance(default_branch, str) or not default_branch:
-        raise RuntimeError("Repository metadata did not include default_branch")
-
-    tree_request = request.Request(
-        url=f"https://api.github.com/repos/{owner}/{repo}/git/trees/{quote(default_branch, safe='')}?recursive=1",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {access_token}",
-            "X-GitHub-Api-Version": "2026-03-10",
-        },
-        method="GET",
-    )
-
-    try:
-        with request.urlopen(tree_request) as response:
-            tree_response = json.loads(response.read().decode("utf-8"))
-    except error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"Failed to get repository tree: {exc.code} {error_body}"
-        ) from exc
-    except error.URLError as exc:
-        raise RuntimeError(
-            f"Failed to connect to GitHub API: {exc.reason}"
-        ) from exc
-
-    tree_items = tree_response.get("tree", [])
-    if not isinstance(tree_items, list):
-        raise RuntimeError("Repository tree response did not include a valid tree")
-
-    repo_file_paths = [
-        item["path"]
-        for item in tree_items
-        if isinstance(item, dict)
-        and item.get("type") == "blob"
-        and isinstance(item.get("path"), str)
-    ]
-    installation_context["repo_file_paths"] = repo_file_paths
+    # Cache the paths
+    context["repo_file_paths"] = repo_file_paths
     return repo_file_paths
 
 
-def _fetch_repository_content(
-    owner: str,
-    repo: str,
+def _fetch_file_content(
+    client: SourceControlClient,
     access_token: str,
-    path: str,
+    repo_url: str,
+    file_path: str,
 ) -> dict[str, str]:
-    normalized_path = path.strip().lstrip("/")
-    if not normalized_path:
-        raise RuntimeError("A repository path is required.")
-
-    encoded_path = quote(normalized_path, safe="/")
-    url = f"https://api.github.com/repos/{owner}/{repo}/contents/{encoded_path}"
-    http_request = request.Request(
-        url=url,
-        headers={
-            "Accept": "application/vnd.github.object+json",
-            "Authorization": f"Bearer {access_token}",
-            "X-GitHub-Api-Version": "2026-03-10",
-        },
-        method="GET",
-    )
-
-    try:
-        with request.urlopen(http_request) as response:
-            response_body = json.loads(response.read().decode("utf-8"))
-    except error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"Failed to get repository content for '{normalized_path}': "
-            f"{exc.code} {error_body}"
-        ) from exc
-    except error.URLError as exc:
-        raise RuntimeError(
-            f"Failed to connect to GitHub API: {exc.reason}"
-        ) from exc
-
-    content = response_body.get("content", "")
-    encoding = response_body.get("encoding")
-    if encoding == "base64" and content:
-        decoded_content = base64.b64decode(content).decode("utf-8", errors="replace")
-    else:
-        decoded_content = content
-
+    """Fetch content of a single file using the source control client."""
+    file_content = client.get_file_content(access_token, repo_url, file_path)
     return {
-        "path": response_body.get("path", normalized_path),
-        "type": response_body.get("type", ""),
-        "content": decoded_content,
+        "path": file_content.path,
+        "type": file_content.file_type,
+        "content": file_content.content,
     }
 
 
@@ -228,19 +150,27 @@ def get_repository_content(
 
     Use the paths that most likely match the failing source files mentioned in the
     stack trace. Each path must be relative to the repository root.
+
+    This function is provider-agnostic and works with any supported source control
+    provider (GitHub, GitLab, etc.).
     """
-    installation_context = INSTALLATION_TOKEN_CACHE.get(installation_cache_key)
-    if not installation_context:
+    context = SOURCE_CONTROL_CACHE.get(installation_cache_key)
+    if not context:
         raise RuntimeError(
-            f"Installation context not found for key: {installation_cache_key}"
+            f"Source control context not found for key: {installation_cache_key}"
         )
 
-    owner, repo = _parse_github_repo(installation_context["repo_url"])
+    client = context["client"]
+    access_token = context["access_token"]
+    repo_url = context["repo_url"]
+    repo_info = client.parse_repo_url(repo_url)
+
     if not paths:
         raise RuntimeError("At least one repository path is required.")
 
     available_paths = set(repo_file_paths)
     resolved_paths: list[str] = []
+
     for path in paths:
         normalized_path = path.strip().lstrip("/")
         if not normalized_path:
@@ -250,6 +180,7 @@ def get_repository_content(
             resolved_paths.append(normalized_path)
             continue
 
+        # Try suffix matching for partial paths
         suffix_matches = [
             repo_path for repo_path in repo_file_paths
             if repo_path.endswith(normalized_path)
@@ -258,21 +189,20 @@ def get_repository_content(
             resolved_paths.append(suffix_matches[0])
             continue
 
-        raise RuntimeError(
-            f"Repository path not found: {normalized_path}"
-        )
+        raise RuntimeError(f"Repository path not found: {normalized_path}")
 
     if not resolved_paths:
         raise RuntimeError("No valid repository paths were provided.")
 
+    # Fetch files in parallel
     max_workers = min(len(resolved_paths), 8)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(
-                _fetch_repository_content,
-                owner,
-                repo,
-                installation_context["access_token"],
+                _fetch_file_content,
+                client,
+                access_token,
+                repo_url,
                 path,
             )
             for path in resolved_paths
@@ -280,7 +210,11 @@ def get_repository_content(
         files = [future.result() for future in futures]
 
     return {
-        "repo": f"{owner}/{repo}",
+        "repo": f"{repo_info.owner}/{repo_info.repo_name}",
         "files": files,
         "token_key": installation_cache_key,
     }
+
+
+# Legacy aliases for backwards compatibility
+INSTALLATION_TOKEN_CACHE = SOURCE_CONTROL_CACHE
