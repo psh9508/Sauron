@@ -1,6 +1,6 @@
 cors:
   allow_origins:
-    - ""
+    - "https://d2db64s5qddbri.cloudfront.net"
 
 db:
   postgres:
