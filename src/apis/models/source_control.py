@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Literal, Union
+from typing import Any, Literal
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
@@ -8,27 +8,21 @@ from src.apis.models.base_response_model import BaseResponseData
 
 # Auth config types for different providers
 class GitHubAppAuthConfig(BaseModel):
-    type: Literal["github_app"] = Field(default="github_app", description="Auth type")
     app_id: str = Field(..., description="GitHub App ID")
     installation_id: str = Field(..., description="GitHub Installation ID")
     pem: str = Field(..., description="GitHub App private key PEM contents")
 
 
 class GitLabPatAuthConfig(BaseModel):
-    type: Literal["gitlab_pat"] = Field(default="gitlab_pat", description="Auth type")
     access_token: str = Field(..., description="GitLab Personal Access Token")
 
 
-AuthConfig = Annotated[
-    Union[GitHubAppAuthConfig, GitLabPatAuthConfig],
-    Field(discriminator="type"),
-]
-
-
 class RepoInfo(BaseModel):
-    owner: str = Field(..., description="Repository owner")
-    repo_name: str = Field(..., description="Repository name")
-    auth_config: AuthConfig = Field(..., description="Authentication configuration")
+    repository_name: str = Field(..., description="Repository name (e.g., 'owner/repo' or 'group/subgroup/repo')")
+    base_url: str | None = Field(default=None, description="Base URL for self-hosted instances (e.g., https://git.example.com)")
+    auth_config: GitHubAppAuthConfig | GitLabPatAuthConfig = Field(
+        ..., description="Authentication configuration"
+    )
 
 
 class CodeRepositoryCreateReq(BaseModel):
@@ -36,14 +30,9 @@ class CodeRepositoryCreateReq(BaseModel):
     repo_info: RepoInfo = Field(..., description="Repository information")
 
 
-class AuthConfigRes(BaseModel):
-    type: str = Field(..., description="Auth type (github_app, gitlab_pat)")
-
-
 class RepoInfoRes(BaseModel):
-    owner: str = Field(..., description="Repository owner")
-    repo_name: str = Field(..., description="Repository name")
-    auth_config: AuthConfigRes = Field(..., description="Auth config (sensitive data excluded)")
+    repository_name: str = Field(..., description="Repository name")
+    base_url: str | None = Field(default=None, description="Base URL for self-hosted instances")
 
 
 class CodeRepositoryRes(BaseResponseData):

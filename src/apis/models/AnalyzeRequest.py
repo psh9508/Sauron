@@ -9,6 +9,7 @@ from src.apis.models.base_response_model import BaseResponseData
 
 class AnalyzeRequest(BaseModel):
     repository_id: int = Field(..., description="Project ID to find source code from source control(github, gitlab, etc.)")
+    repository_url: str | None = Field(default=None, description="Repository URL to clone and analyze (optional)")
     error_message: str = Field(..., description="Error message to analyze")
     stack_trace: str = Field(..., description="Stack trace of the error")
 

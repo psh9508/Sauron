@@ -81,3 +81,15 @@ class SourceControlClient(ABC):
             FileContent with path and decoded content
         """
         raise NotImplementedError
+
+    @abstractmethod
+    def build_repo_url(self, repo_info: dict[str, str]) -> str:
+        """Build repository URL from repository info.
+
+        Args:
+            repo_info: Dictionary containing repository_name and base_url
+
+        Returns:
+            Full repository URL for this provider
+        """
+        raise NotImplementedError

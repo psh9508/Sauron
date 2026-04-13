@@ -1,3 +1,4 @@
+name: sauron
 version: "3.8"
 
 services:

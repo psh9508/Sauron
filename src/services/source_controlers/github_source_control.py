@@ -250,3 +250,12 @@ class GitHubSourceControl(SourceControlClient):
             content=decoded_content,
             file_type=response.get("type", "file"),
         )
+
+    def build_repo_url(self, repo_info: dict[str, str]) -> str:
+        """Build GitHub repository URL from repository_name."""
+        repository_name = repo_info.get("repository_name")
+
+        if not repository_name:
+            raise ValueError("'repository_name' is required to build GitHub repo URL.")
+
+        return f"https://github.com/{repository_name}"

@@ -13,7 +13,7 @@ from src.clients.models.llm_config import LLMConfig
 from src.workflows.models.base_context import BaseContext
 from src.workflows.models.states.base_state import BaseAgentState
 from src.workflows.tools.github_tools import (
-    get_installation_context_cache_key,
+    get_source_control_cache_key,
     get_repository_file_paths,
     get_repository_content,
 )
@@ -128,7 +128,7 @@ class SauronAgent():
     ) -> dict:
         analyze_request = runtime.context.analyze_request
 
-        cache_key = await get_installation_context_cache_key(analyze_request.repository_id)
+        cache_key = await get_source_control_cache_key(analyze_request.repository_id, analyze_request.repository_url)
         repo_file_paths = get_repository_file_paths(cache_key)
         candidate_file_paths = self._extract_candidate_file_paths(
             stack_trace=analyze_request.stack_trace,

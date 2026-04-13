@@ -15,12 +15,19 @@ class GitLabSourceControl(SourceControlClient):
     when ref parameter is not specified, ensuring we always get the latest code.
     """
 
-    API_BASE_URL = "https://gitlab.com/api/v4"
-
-    def __init__(self, access_token: str, base_url: str | None = None) -> None:
+    def __init__(self, access_token: str, repo_url: str, base_url: str | None = None) -> None:
         self.access_token = access_token
-        if base_url:
-            self.API_BASE_URL = f"{base_url.rstrip('/')}/api/v4"
+        self.repo_url = repo_url
+        self.base_url = base_url.rstrip("/") if base_url else self._extract_base_url(repo_url)
+        self.API_BASE_URL = f"{self.base_url}/api/v4"
+
+    def _extract_base_url(self, repo_url: str) -> str:
+        """Extract base URL from repository URL.
+
+        Example: https://git.nwz.kr/ntech/ai/project -> https://git.nwz.kr
+        """
+        parsed = urlparse(repo_url)
+        return f"{parsed.scheme}://{parsed.netloc}"
 
     def issue_access_token(self, repo_url: str) -> IssuedAccessToken:
         """
@@ -185,3 +192,13 @@ class GitLabSourceControl(SourceControlClient):
             content=content,
             file_type="file",
         )
+
+    def build_repo_url(self, repo_info: dict[str, str]) -> str:
+        """Build GitLab repository URL using base_url and repository_name."""
+        base_url = repo_info.get("base_url") or self.base_url
+        repository_name = repo_info.get("repository_name")
+
+        if not repository_name:
+            raise ValueError("'repository_name' is required to build GitLab repo URL.")
+
+        return f"{base_url.rstrip('/')}/{repository_name.lstrip('/')}"

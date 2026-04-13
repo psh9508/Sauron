@@ -10,11 +10,12 @@ class CodeRepository(Base):
 
     repo_info JSONB structure:
     {
-        "owner": str,
-        "repo_name": str,
+        "repository_name": str,  # e.g., "owner/repo" or "group/subgroup/repo"
+        "base_url": str | None,  # e.g., "https://git.example.com" for self-hosted
         "auth_config": {
-            "type": "github_app" | "gitlab_pat",
-            ...encrypted auth fields...
+            ...encrypted auth fields based on provider...
+            # github: encrypted_pem, app_id, installation_id
+            # gitlab: encrypted_access_token
         }
     }
     """
@@ -29,12 +30,12 @@ class CodeRepository(Base):
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
     @property
-    def owner(self) -> str:
-        return self.repo_info.get("owner")
+    def repository_name(self) -> str:
+        return self.repo_info.get("repository_name")
 
     @property
-    def repo_name(self) -> str:
-        return self.repo_info.get("repo_name")
+    def base_url(self) -> str | None:
+        return self.repo_info.get("base_url")
 
     @property
     def auth_config(self) -> dict:

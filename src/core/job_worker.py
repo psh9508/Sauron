@@ -28,11 +28,7 @@ class AnalyzeJobWorker:
                 await asyncio.sleep(self.interval_seconds)
                 continue
 
-            request = AnalyzeRequest(
-                repository_id=claimed_job.repository_id,
-                error_message=claimed_job.error_message_input,
-                stack_trace=claimed_job.stack_trace,
-            )
+            request = AnalyzeRequest(**claimed_job.request)
 
             try:
                 result_content = await run_analyze(request)

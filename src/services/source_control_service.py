@@ -3,7 +3,6 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apis.models.source_control import (
-    AuthConfigRes,
     CodeRepositoryCreateReq,
     CodeRepositoryListRes,
     CodeRepositoryRes,
@@ -38,16 +37,20 @@ class SourceControlService:
 
         code_repo = await self.code_repo_repository.aget_active_by_id(repository_id)
         repo_info = code_repo.repo_info
+
+        decrypted_auth_config = ScmAuthCipher.decrypt_auth_config(
+            code_repo.provider, repo_info.get("auth_config", {})
+        )
         repo_url = self._build_repo_url(
             provider=code_repo.provider,
-            owner=repo_info.get("owner"),
-            repo_name=repo_info.get("repo_name"),
+            base_url=repo_info.get("base_url"),
+            repository_name=repo_info.get("repository_name"),
         )
-
-        decrypted_auth_config = ScmAuthCipher.decrypt_auth_config(repo_info.get("auth_config", {}))
         source_control_client = self._get_source_control_client(
             provider=code_repo.provider,
             auth_config=decrypted_auth_config,
+            repo_url=repo_url,
+            base_url=repo_info.get("base_url"),
         )
         issued_token = source_control_client.issue_access_token(repo_url)
 
@@ -64,11 +67,13 @@ class SourceControlService:
 
         repo_info = request.repo_info
         auth_config_dict = repo_info.auth_config.model_dump()
-        encrypted_auth_config = ScmAuthCipher.encrypt_auth_config(auth_config_dict)
+        encrypted_auth_config = ScmAuthCipher.encrypt_auth_config(
+            request.provider, auth_config_dict
+        )
 
         repo_info_dict = {
-            "owner": repo_info.owner,
-            "repo_name": repo_info.repo_name,
+            "repository_name": repo_info.repository_name,
+            "base_url": repo_info.base_url,
             "auth_config": encrypted_auth_config,
         }
 
@@ -82,30 +87,46 @@ class SourceControlService:
     def _to_repository_res(self, code_repo: Any) -> CodeRepositoryRes:
         """Convert DB model to response model, excluding sensitive data."""
         repo_info = code_repo.repo_info
-        auth_config = repo_info.get("auth_config", {})
 
         return CodeRepositoryRes(
             id=code_repo.id,
             provider=code_repo.provider,
             repo_info=RepoInfoRes(
-                owner=repo_info.get("owner"),
-                repo_name=repo_info.get("repo_name"),
-                auth_config=AuthConfigRes(type=auth_config.get("type", "unknown")),
+                repository_name=repo_info.get("repository_name"),
+                base_url=repo_info.get("base_url"),
             ),
             is_active=code_repo.is_active,
             created_at=code_repo.created_at,
             updated_at=code_repo.updated_at,
         )
 
+    def _build_repo_url(
+        self,
+        provider: str,
+        base_url: str | None,
+        repository_name: str | None,
+    ) -> str:
+        """Build repository URL from base_url and repository_name."""
+        if provider.strip().lower() == "github":
+            if not repository_name:
+                raise ValueError("'repository_name' is required to build GitHub repo URL.")
+            return f"https://github.com/{repository_name.lstrip('/')}"
+
+        # GitLab
+        if not base_url or not repository_name:
+            raise ValueError("'base_url' and 'repository_name' are required to build GitLab repo URL.")
+        return f"{base_url.rstrip('/')}/{repository_name.lstrip('/')}"
+
     def _get_source_control_client(
         self,
         provider: str,
         auth_config: dict[str, Any],
+        repo_url: str,
+        base_url: str | None = None,
     ) -> SourceControlClient:
         selected_provider = provider.strip().lower()
-        auth_type = auth_config.get("type")
 
-        if selected_provider == "github" and auth_type == "github_app":
+        if selected_provider == "github":
             from src.services.source_controlers.github_source_control import GitHubSourceControl
 
             return GitHubSourceControl(
@@ -114,31 +135,27 @@ class SourceControlService:
                 pem_contents=auth_config.get("pem"),
             )
 
-        if selected_provider == "gitlab" and auth_type == "gitlab_pat":
+        if selected_provider == "gitlab":
             from src.services.source_controlers.gitlab_source_control import GitLabSourceControl
 
             return GitLabSourceControl(
                 access_token=auth_config.get("access_token"),
+                repo_url=repo_url,
+                base_url=base_url,
             )
 
         raise UnsupportedSourceControlProviderError(provider=selected_provider)
 
-    def _build_repo_url(self, provider: str, owner: str, repo_name: str) -> str:
-        selected_provider = provider.strip().lower()
-
-        if selected_provider == "github":
-            return f"https://github.com/{owner}/{repo_name}"
-
-        if selected_provider == "gitlab":
-            return f"https://gitlab.com/{owner}/{repo_name}"
-
-        raise UnsupportedSourceControlProviderError(provider=selected_provider)
-
-    async def get_client_for_repository(self, repository_id: int) -> tuple[SourceControlClient, str, str]:
+    async def get_client_for_repository(
+        self,
+        repository_id: int,
+        repository_url: str | None = None,
+    ) -> tuple[SourceControlClient, str, str]:
         """Get a source control client for the given repository.
 
         Args:
             repository_id: The ID of the repository
+            repository_url: Optional repository URL (if provided, uses this instead of building from DB)
 
         Returns:
             Tuple of (client, access_token, repo_url)
@@ -148,16 +165,24 @@ class SourceControlService:
 
         code_repo = await self.code_repo_repository.aget_active_by_id(repository_id)
         repo_info = code_repo.repo_info
-        repo_url = self._build_repo_url(
-            provider=code_repo.provider,
-            owner=repo_info.get("owner"),
-            repo_name=repo_info.get("repo_name"),
+        auth_config = repo_info.get("auth_config", {})
+
+        decrypted_auth_config = ScmAuthCipher.decrypt_auth_config(
+            code_repo.provider, auth_config
         )
 
-        decrypted_auth_config = ScmAuthCipher.decrypt_auth_config(repo_info.get("auth_config", {}))
+        # Use provided repository_url or build from DB
+        repo_url = repository_url or self._build_repo_url(
+            provider=code_repo.provider,
+            base_url=repo_info.get("base_url"),
+            repository_name=repo_info.get("repository_name"),
+        )
+
         client = self._get_source_control_client(
             provider=code_repo.provider,
             auth_config=decrypted_auth_config,
+            repo_url=repo_url,
+            base_url=repo_info.get("base_url"),
         )
 
         issued_token = client.issue_access_token(repo_url)

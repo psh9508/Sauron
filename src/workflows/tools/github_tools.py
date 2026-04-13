@@ -38,7 +38,7 @@ def _get_cached_context(repository_id: int) -> tuple[str, SourceControlContext |
     return cache_key, SOURCE_CONTROL_CACHE.get(cache_key)
 
 
-async def get_installation_context_cache_key(repository_id: int) -> str:
+async def get_source_control_cache_key(repository_id: int, repository_url: str | None = None) -> str:
     """Get or create a cached source control context for the repository.
 
     This function is provider-agnostic and works with any supported source control
@@ -46,6 +46,7 @@ async def get_installation_context_cache_key(repository_id: int) -> str:
 
     Args:
         repository_id: The ID of the repository in the database
+        repository_url: Optional repository URL (if provided, uses this instead of building from DB)
 
     Returns:
         Cache key for the source control context
@@ -57,7 +58,8 @@ async def get_installation_context_cache_key(repository_id: int) -> str:
     async with database.session_scope() as session:
         source_control_service = SourceControlService(session)
         client, access_token, repo_url = await source_control_service.get_client_for_repository(
-            repository_id
+            repository_id,
+            repository_url,
         )
 
     if not access_token or not repo_url:

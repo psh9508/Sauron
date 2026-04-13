@@ -23,8 +23,7 @@ class AnalyzeJobService:
         created_job = await self.analyze_job_repo.acreate(
             job_id=job_id,
             repository_id=request.repository_id,
-            error_message_input=request.error_message,
-            stack_trace=request.stack_trace,
+            request=request.model_dump(),
         )
         return AnalyzeJobAcceptedRes(
             job_id=created_job.id,

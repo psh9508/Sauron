@@ -15,20 +15,16 @@ from src.services.exceptions.source_control_exception import (
 class ScmAuthCipher:
     """Encrypts and decrypts SCM authentication configuration."""
 
-    # Fields that should be encrypted per auth type
+    # Fields that should be encrypted per provider
     SENSITIVE_FIELDS = {
-        "github_app": ["pem"],
-        "gitlab_pat": ["access_token"],
+        "github": ["pem"],
+        "gitlab": ["access_token"],
     }
 
     @classmethod
-    def encrypt_auth_config(cls, auth_config: dict[str, Any]) -> dict[str, Any]:
+    def encrypt_auth_config(cls, provider: str, auth_config: dict[str, Any]) -> dict[str, Any]:
         """Encrypt sensitive fields in auth config."""
-        auth_type = auth_config.get("type")
-        if not auth_type:
-            return auth_config
-
-        sensitive_fields = cls.SENSITIVE_FIELDS.get(auth_type, [])
+        sensitive_fields = cls.SENSITIVE_FIELDS.get(provider, [])
         encrypted_config = auth_config.copy()
 
         for field in sensitive_fields:
@@ -39,13 +35,9 @@ class ScmAuthCipher:
         return encrypted_config
 
     @classmethod
-    def decrypt_auth_config(cls, auth_config: dict[str, Any]) -> dict[str, Any]:
+    def decrypt_auth_config(cls, provider: str, auth_config: dict[str, Any]) -> dict[str, Any]:
         """Decrypt sensitive fields in auth config."""
-        auth_type = auth_config.get("type")
-        if not auth_type:
-            return auth_config
-
-        sensitive_fields = cls.SENSITIVE_FIELDS.get(auth_type, [])
+        sensitive_fields = cls.SENSITIVE_FIELDS.get(provider, [])
         decrypted_config = auth_config.copy()
 
         for field in sensitive_fields:

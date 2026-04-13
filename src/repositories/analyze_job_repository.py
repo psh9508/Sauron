@@ -17,8 +17,7 @@ class AnalyzeJobRepository:
         self,
         job_id: UUID,
         repository_id: int,
-        error_message_input: str,
-        stack_trace: str,
+        request: dict,
     ) -> AnalyzeJob:
         stmt = (
             insert(AnalyzeJob)
@@ -26,8 +25,7 @@ class AnalyzeJobRepository:
                 id=job_id,
                 repository_id=repository_id,
                 status=AnalyzeJobStatus.QUEUED.value,
-                error_message_input=error_message_input,
-                stack_trace=stack_trace,
+                request=request,
             )
             .returning(AnalyzeJob)
         )
