@@ -1,17 +1,35 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field, TypeAdapter
 
 from src.apis.models.base_response_model import BaseResponseData
 
 
-class AnalyzeRequest(BaseModel):
-    repository_id: int = Field(..., description="Project ID to find source code from source control(github, gitlab, etc.)")
-    repository_url: str | None = Field(default=None, description="Repository URL to clone and analyze (optional)")
+class BaseAnalyzeRequest(BaseModel):
+    provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
+    repository_id: int = Field(..., description="Source control repository configuration ID")
     error_message: str = Field(..., description="Error message to analyze")
     stack_trace: str = Field(..., description="Stack trace of the error")
+
+
+class GitHubAnalyzeRequest(BaseAnalyzeRequest):
+    provider: Literal["github"] = Field(default="github", description="Source control provider")
+
+
+class GitLabAnalyzeRequest(BaseAnalyzeRequest):
+    provider: Literal["gitlab"] = Field(default="gitlab", description="Source control provider")
+    repository_url: AnyHttpUrl = Field(..., description="GitLab repository URL to analyze")
+
+
+AnalyzeRequestPayload = GitHubAnalyzeRequest | GitLabAnalyzeRequest
+AnalyzeRequest = Annotated[AnalyzeRequestPayload, Field(discriminator="provider")]
+_ANALYZE_REQUEST_ADAPTER = TypeAdapter(AnalyzeRequest)
+
+
+def parse_analyze_request(payload: object) -> AnalyzeRequestPayload:
+    return _ANALYZE_REQUEST_ADAPTER.validate_python(payload)
 
 
 class AnalyzeJobAcceptedRes(BaseResponseData):
@@ -21,7 +39,7 @@ class AnalyzeJobAcceptedRes(BaseResponseData):
 
 class AnalyzeJobRes(BaseResponseData):
     job_id: UUID = Field(..., description="Analyze job ID")
-    repository_id: int = Field(..., description="Project ID")
+    repository_id: int = Field(..., description="Source control repository configuration ID")
     status: Literal["queued", "running", "completed", "failed"] = Field(
         ...,
         description="Analyze job status",

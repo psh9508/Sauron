@@ -128,7 +128,13 @@ class SauronAgent():
     ) -> dict:
         analyze_request = runtime.context.analyze_request
 
-        cache_key = await get_source_control_cache_key(analyze_request.repository_id, analyze_request.repository_url)
+        repository_url = getattr(analyze_request, "repository_url", None)
+        resolved_repository_url = str(repository_url) if repository_url is not None else None
+        cache_key = await get_source_control_cache_key(
+            analyze_request.repository_id,
+            analyze_request.provider,
+            resolved_repository_url,
+        )
         repo_file_paths = get_repository_file_paths(cache_key)
         candidate_file_paths = self._extract_candidate_file_paths(
             stack_trace=analyze_request.stack_trace,

@@ -6,12 +6,14 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
+from src.apis.models.source_control import GitHubCodeRepositoryRes, GitHubRepoInfoCreate, GitHubRepoInfoRes
 from src.core.jwt_logic import JwtLogic
 from src.services.exceptions.source_control_exception import InvalidSourceControlRepositoryUrlError
 from src.services.source_control_models import IssuedAccessToken
-from src.services.source_controlers.base import FileContent, RepositoryInfo, SourceControlClient
+from src.services.source_controlers.base import FileContent, RepositoryInfo, SourceControlClient, register_client
 
 
+@register_client("github")
 class GitHubSourceControl(SourceControlClient):
     """GitHub source control client using GitHub App authentication."""
 
@@ -258,4 +260,70 @@ class GitHubSourceControl(SourceControlClient):
         if not repository_name:
             raise ValueError("'repository_name' is required to build GitHub repo URL.")
 
-        return f"https://github.com/{repository_name}"
+        return f"https://github.com/{repository_name.lstrip('/')}"
+
+    def validate_repo_info(self, repo_info: dict[str, str]) -> None:
+        """Validate required fields for GitHub repository."""
+        if not repo_info.get("repository_name"):
+            raise ValueError("'repository_name' is required for GitHub provider.")
+
+    def to_repo_info_response(self, repo_info: dict[str, str]) -> GitHubRepoInfoRes:
+        """Convert repo_info to response format for GitHub."""
+        return GitHubRepoInfoRes(
+            repository_name=repo_info.get("repository_name", ""),
+        )
+
+    def to_repository_response(
+        self,
+        id: int,
+        repo_info: dict[str, str],
+        is_active: bool,
+        created_at: datetime,
+        updated_at: datetime,
+    ) -> GitHubCodeRepositoryRes:
+        """Convert repository data to GitHubCodeRepositoryRes."""
+        return GitHubCodeRepositoryRes(
+            id=id,
+            provider="github",
+            repo_info=self.to_repo_info_response(repo_info),
+            is_active=is_active,
+            created_at=created_at,
+            updated_at=updated_at,
+        )
+
+    @staticmethod
+    def build_repo_info_dict(
+        repo_info: GitHubRepoInfoCreate,
+        encrypted_auth_config: dict[str, str],
+    ) -> dict[str, str]:
+        """Build repo_info dictionary for GitHub repository."""
+        return {
+            "repository_name": repo_info.repository_name,
+            "auth_config": encrypted_auth_config,
+        }
+
+    def resolve_repo_url(
+        self,
+        repository_id: int,
+        repo_info: dict[str, str],
+        repository_url: str | None,
+    ) -> str:
+        """Resolve repository URL for GitHub (ignores repository_url parameter)."""
+        repository_name = repo_info.get("repository_name")
+        if not repository_name:
+            raise InvalidSourceControlRepositoryUrlError(repo_url="missing repository_name")
+        return f"https://github.com/{repository_name.lstrip('/')}"
+
+    @classmethod
+    def create_client(
+        cls,
+        auth_config: dict[str, str],
+        repo_url: str,
+        base_url: str | None = None,
+    ) -> "GitHubSourceControl":
+        """Factory method to create GitHubSourceControl instance."""
+        return cls(
+            app_id=auth_config.get("app_id"),
+            installation_id=auth_config.get("installation_id"),
+            pem_contents=auth_config.get("pem"),
+        )

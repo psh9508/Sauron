@@ -2,17 +2,26 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.apis.models.AnalyzeRequest import AnalyzeRequestPayload
 from src.apis.models.source_control import (
-    CodeRepositoryCreateReq,
+    CodeRepositoryCreateReqPayload,
     CodeRepositoryListRes,
     CodeRepositoryRes,
-    RepoInfoRes,
     SourceControlAccessTokenRes,
 )
 from src.core.scm_pem_cipher import ScmAuthCipher
 from src.repositories.code_repository_repository import CodeRepositoryRepository
-from src.services.exceptions.source_control_exception import UnsupportedSourceControlProviderError
-from src.services.source_controlers.base import FileContent, SourceControlClient
+from src.services.exceptions.source_control_exception import SourceControlProviderMismatchError
+from src.services.source_controlers.base import (
+    FileContent,
+    SourceControlClient,
+    create_source_control_client,
+    get_client_class,
+)
+
+# Import clients to trigger registration
+import src.services.source_controlers.github_source_control  # noqa: F401
+import src.services.source_controlers.gitlab_source_control  # noqa: F401
 
 
 class SourceControlService:
@@ -20,216 +29,114 @@ class SourceControlService:
         self.code_repo_repository = CodeRepositoryRepository(session) if session is not None else None
 
     async def aget_repositories(self) -> CodeRepositoryListRes:
-        if self.code_repo_repository is None:
-            raise RuntimeError("Code repository is not initialized.")
-
-        code_repositories = await self.code_repo_repository.aget_all()
+        code_repositories = await self._require_repository_repo().aget_all()
         return CodeRepositoryListRes(
-            repositories=[
-                self._to_repository_res(code_repo)
-                for code_repo in code_repositories
-            ]
+            repositories=[self._to_repository_res(code_repo) for code_repo in code_repositories]
         )
 
-    async def issue_access_token(self, repository_id: int) -> SourceControlAccessTokenRes:
-        if self.code_repo_repository is None:
-            raise RuntimeError("Code repository is not initialized.")
+    async def acreate_repository(self, request: CodeRepositoryCreateReqPayload) -> CodeRepositoryRes:
+        repo_repository = self._require_repository_repo()
+        auth_config_dict = request.repo_info.auth_config.model_dump()
+        encrypted_auth_config = ScmAuthCipher.encrypt_auth_config(request.provider, auth_config_dict)
 
-        code_repo = await self.code_repo_repository.aget_active_by_id(repository_id)
-        repo_info = code_repo.repo_info
+        # Client가 repo_info_dict 생성을 담당
+        client_class = get_client_class(request.provider)
+        repo_info_dict = client_class.build_repo_info_dict(request.repo_info, encrypted_auth_config)
 
-        decrypted_auth_config = ScmAuthCipher.decrypt_auth_config(
-            code_repo.provider, repo_info.get("auth_config", {})
-        )
-        repo_url = self._build_repo_url(
-            provider=code_repo.provider,
-            base_url=repo_info.get("base_url"),
-            repository_name=repo_info.get("repository_name"),
-        )
-        source_control_client = self._get_source_control_client(
-            provider=code_repo.provider,
-            auth_config=decrypted_auth_config,
-            repo_url=repo_url,
-            base_url=repo_info.get("base_url"),
-        )
-        issued_token = source_control_client.issue_access_token(repo_url)
-
-        return SourceControlAccessTokenRes(
-            provider=code_repo.provider,
-            access_token=issued_token.access_token,
-            expires_at=issued_token.expires_at,
-            repo_url=repo_url,
-        )
-
-    async def acreate_repository(self, request: CodeRepositoryCreateReq) -> CodeRepositoryRes:
-        if self.code_repo_repository is None:
-            raise RuntimeError("Code repository is not initialized.")
-
-        repo_info = request.repo_info
-        auth_config_dict = repo_info.auth_config.model_dump()
-        encrypted_auth_config = ScmAuthCipher.encrypt_auth_config(
-            request.provider, auth_config_dict
-        )
-
-        repo_info_dict = {
-            "repository_name": repo_info.repository_name,
-            "base_url": repo_info.base_url,
-            "auth_config": encrypted_auth_config,
-        }
-
-        created_repo = await self.code_repo_repository.acreate(
+        created_repo = await repo_repository.acreate(
             provider=request.provider,
             repo_info=repo_info_dict,
         )
-
         return self._to_repository_res(created_repo)
 
-    def _to_repository_res(self, code_repo: Any) -> CodeRepositoryRes:
-        """Convert DB model to response model, excluding sensitive data."""
-        repo_info = code_repo.repo_info
+    async def avalidate_analyze_request(self, request: AnalyzeRequestPayload) -> None:
+        code_repo = await self._get_active_repository(request.repository_id)
+        self._validate_provider_match(request.provider, code_repo.provider)
 
-        return CodeRepositoryRes(
-            id=code_repo.id,
+        # Client가 URL 검증을 담당
+        repository_url = getattr(request, "repository_url", None)
+        client = create_source_control_client(
             provider=code_repo.provider,
-            repo_info=RepoInfoRes(
-                repository_name=repo_info.get("repository_name"),
-                base_url=repo_info.get("base_url"),
-            ),
-            is_active=code_repo.is_active,
-            created_at=code_repo.created_at,
-            updated_at=code_repo.updated_at,
+            auth_config={},
+            repo_url="",
+        )
+        client.resolve_repo_url(
+            repository_id=code_repo.id,
+            repo_info=code_repo.repo_info,
+            repository_url=str(repository_url) if repository_url is not None else None,
         )
 
-    def _build_repo_url(
+    async def issue_access_token(
         self,
-        provider: str,
-        base_url: str | None,
-        repository_name: str | None,
-    ) -> str:
-        """Build repository URL from base_url and repository_name."""
-        if provider.strip().lower() == "github":
-            if not repository_name:
-                raise ValueError("'repository_name' is required to build GitHub repo URL.")
-            return f"https://github.com/{repository_name.lstrip('/')}"
-
-        # GitLab
-        if not base_url or not repository_name:
-            raise ValueError("'base_url' and 'repository_name' are required to build GitLab repo URL.")
-        return f"{base_url.rstrip('/')}/{repository_name.lstrip('/')}"
-
-    def _get_source_control_client(
-        self,
-        provider: str,
-        auth_config: dict[str, Any],
-        repo_url: str,
-        base_url: str | None = None,
-    ) -> SourceControlClient:
-        selected_provider = provider.strip().lower()
-
-        if selected_provider == "github":
-            from src.services.source_controlers.github_source_control import GitHubSourceControl
-
-            return GitHubSourceControl(
-                app_id=auth_config.get("app_id"),
-                installation_id=auth_config.get("installation_id"),
-                pem_contents=auth_config.get("pem"),
-            )
-
-        if selected_provider == "gitlab":
-            from src.services.source_controlers.gitlab_source_control import GitLabSourceControl
-
-            return GitLabSourceControl(
-                access_token=auth_config.get("access_token"),
-                repo_url=repo_url,
-                base_url=base_url,
-            )
-
-        raise UnsupportedSourceControlProviderError(provider=selected_provider)
+        repository_id: int,
+        provider: str | None = None,
+        repository_url: str | None = None,
+    ) -> SourceControlAccessTokenRes:
+        client, issued_access_token, repo_url, resolved_provider = await self._get_repository_access(
+            repository_id=repository_id,
+            provider=provider,
+            repository_url=repository_url,
+        )
+        return SourceControlAccessTokenRes(
+            provider=resolved_provider,
+            access_token=issued_access_token.access_token,
+            expires_at=issued_access_token.expires_at,
+            repo_url=repo_url,
+        )
 
     async def get_client_for_repository(
         self,
         repository_id: int,
+        provider: str | None = None,
         repository_url: str | None = None,
     ) -> tuple[SourceControlClient, str, str]:
-        """Get a source control client for the given repository.
-
-        Args:
-            repository_id: The ID of the repository
-            repository_url: Optional repository URL (if provided, uses this instead of building from DB)
-
-        Returns:
-            Tuple of (client, access_token, repo_url)
-        """
-        if self.code_repo_repository is None:
-            raise RuntimeError("Code repository is not initialized.")
-
-        code_repo = await self.code_repo_repository.aget_active_by_id(repository_id)
-        repo_info = code_repo.repo_info
-        auth_config = repo_info.get("auth_config", {})
-
-        decrypted_auth_config = ScmAuthCipher.decrypt_auth_config(
-            code_repo.provider, auth_config
+        client, issued_access_token, repo_url, _ = await self._get_repository_access(
+            repository_id=repository_id,
+            provider=provider,
+            repository_url=repository_url,
         )
+        return client, issued_access_token.access_token, repo_url
 
-        # Use provided repository_url or build from DB
-        repo_url = repository_url or self._build_repo_url(
-            provider=code_repo.provider,
-            base_url=repo_info.get("base_url"),
-            repository_name=repo_info.get("repository_name"),
+    async def get_repository_tree(
+        self,
+        repository_id: int,
+        branch: str | None = None,
+        provider: str | None = None,
+        repository_url: str | None = None,
+    ) -> list[str]:
+        client, access_token, repo_url = await self.get_client_for_repository(
+            repository_id=repository_id,
+            provider=provider,
+            repository_url=repository_url,
         )
-
-        client = self._get_source_control_client(
-            provider=code_repo.provider,
-            auth_config=decrypted_auth_config,
-            repo_url=repo_url,
-            base_url=repo_info.get("base_url"),
-        )
-
-        issued_token = client.issue_access_token(repo_url)
-
-        return client, issued_token.access_token, repo_url
-
-    async def get_repository_tree(self, repository_id: int, branch: str | None = None) -> list[str]:
-        """Get all file paths in the repository.
-
-        Args:
-            repository_id: The ID of the repository
-            branch: Optional branch name (uses default branch if None)
-
-        Returns:
-            List of file paths
-        """
-        client, access_token, repo_url = await self.get_client_for_repository(repository_id)
         return client.get_repository_tree(access_token, repo_url, branch)
 
-    async def get_file_content(self, repository_id: int, file_path: str) -> FileContent:
-        """Get content of a single file from the repository.
-
-        Args:
-            repository_id: The ID of the repository
-            file_path: Path to the file relative to repository root
-
-        Returns:
-            FileContent with path and decoded content
-        """
-        client, access_token, repo_url = await self.get_client_for_repository(repository_id)
+    async def get_file_content(
+        self,
+        repository_id: int,
+        file_path: str,
+        provider: str | None = None,
+        repository_url: str | None = None,
+    ) -> FileContent:
+        client, access_token, repo_url = await self.get_client_for_repository(
+            repository_id=repository_id,
+            provider=provider,
+            repository_url=repository_url,
+        )
         return client.get_file_content(access_token, repo_url, file_path)
 
     async def get_multiple_file_contents(
         self,
         repository_id: int,
         file_paths: list[str],
+        provider: str | None = None,
+        repository_url: str | None = None,
     ) -> list[FileContent]:
-        """Get content of multiple files from the repository.
-
-        Args:
-            repository_id: The ID of the repository
-            file_paths: List of file paths relative to repository root
-
-        Returns:
-            List of FileContent objects
-        """
-        client, access_token, repo_url = await self.get_client_for_repository(repository_id)
+        client, access_token, repo_url = await self.get_client_for_repository(
+            repository_id=repository_id,
+            provider=provider,
+            repository_url=repository_url,
+        )
 
         contents: list[FileContent] = []
         for file_path in file_paths:
@@ -237,3 +144,70 @@ class SourceControlService:
             contents.append(content)
 
         return contents
+
+    async def _get_repository_access(
+        self,
+        repository_id: int,
+        provider: str | None,
+        repository_url: str | None,
+    ):
+        code_repo = await self._get_active_repository(repository_id)
+        resolved_provider = code_repo.provider.strip().lower()
+        if provider is not None:
+            self._validate_provider_match(provider, resolved_provider)
+
+        decrypted_auth_config = ScmAuthCipher.decrypt_auth_config(
+            resolved_provider,
+            code_repo.repo_info.get("auth_config", {}),
+        )
+
+        # Client 생성 후 URL 해석을 위임
+        client = create_source_control_client(
+            provider=resolved_provider,
+            auth_config=decrypted_auth_config,
+            repo_url="",
+            base_url=code_repo.repo_info.get("base_url"),
+        )
+
+        repo_url = client.resolve_repo_url(
+            repository_id=code_repo.id,
+            repo_info=code_repo.repo_info,
+            repository_url=repository_url,
+        )
+
+        issued_access_token = client.issue_access_token(repo_url)
+        return client, issued_access_token, repo_url, resolved_provider
+
+    async def _get_active_repository(self, repository_id: int):
+        return await self._require_repository_repo().aget_active_by_id(repository_id)
+
+    def _require_repository_repo(self) -> CodeRepositoryRepository:
+        if self.code_repo_repository is None:
+            raise RuntimeError("Code repository is not initialized.")
+        return self.code_repo_repository
+
+    def _to_repository_res(self, code_repo: Any) -> CodeRepositoryRes:
+        provider = code_repo.provider.strip().lower()
+
+        # Client가 전체 Response 생성을 담당
+        client = create_source_control_client(
+            provider=provider,
+            auth_config={},
+            repo_url="",
+        )
+        return client.to_repository_response(
+            id=code_repo.id,
+            repo_info=code_repo.repo_info,
+            is_active=code_repo.is_active,
+            created_at=code_repo.created_at,
+            updated_at=code_repo.updated_at,
+        )
+
+    def _validate_provider_match(self, request_provider: str, repository_provider: str) -> None:
+        normalized_request_provider = request_provider.strip().lower()
+        normalized_repository_provider = repository_provider.strip().lower()
+        if normalized_request_provider != normalized_repository_provider:
+            raise SourceControlProviderMismatchError(
+                request_provider=normalized_request_provider,
+                repository_provider=normalized_repository_provider,
+            )

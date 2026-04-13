@@ -1,12 +1,11 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 from src.apis.models.base_response_model import BaseResponseData
 
 
-# Auth config types for different providers
 class GitHubAppAuthConfig(BaseModel):
     app_id: str = Field(..., description="GitHub App ID")
     installation_id: str = Field(..., description="GitHub Installation ID")
@@ -17,33 +16,61 @@ class GitLabPatAuthConfig(BaseModel):
     access_token: str = Field(..., description="GitLab Personal Access Token")
 
 
-class RepoInfo(BaseModel):
-    repository_name: str = Field(..., description="Repository name (e.g., 'owner/repo' or 'group/subgroup/repo')")
-    base_url: str | None = Field(default=None, description="Base URL for self-hosted instances (e.g., https://git.example.com)")
-    auth_config: GitHubAppAuthConfig | GitLabPatAuthConfig = Field(
-        ..., description="Authentication configuration"
-    )
+class GitHubRepoInfoCreate(BaseModel):
+    repository_name: str = Field(..., description="Repository name (e.g., 'owner/repo')")
+    auth_config: GitHubAppAuthConfig = Field(..., description="GitHub App authentication configuration")
 
 
-class CodeRepositoryCreateReq(BaseModel):
-    provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
-    repo_info: RepoInfo = Field(..., description="Repository information")
+class GitLabRepoInfoCreate(BaseModel):
+    base_url: AnyHttpUrl = Field(..., description="Base URL for the GitLab instance")
+    auth_config: GitLabPatAuthConfig = Field(..., description="GitLab PAT authentication configuration")
 
 
-class RepoInfoRes(BaseModel):
+class GitHubCodeRepositoryCreateReq(BaseModel):
+    provider: Literal["github"] = Field(default="github", description="Source control provider")
+    repo_info: GitHubRepoInfoCreate = Field(..., description="GitHub repository information")
+
+
+class GitLabCodeRepositoryCreateReq(BaseModel):
+    provider: Literal["gitlab"] = Field(default="gitlab", description="Source control provider")
+    repo_info: GitLabRepoInfoCreate = Field(..., description="GitLab repository information")
+
+
+CodeRepositoryCreateReqPayload = GitHubCodeRepositoryCreateReq | GitLabCodeRepositoryCreateReq
+CodeRepositoryCreateReq = Annotated[CodeRepositoryCreateReqPayload, Field(discriminator="provider")]
+
+
+class GitHubRepoInfoRes(BaseModel):
     repository_name: str = Field(..., description="Repository name")
-    base_url: str | None = Field(default=None, description="Base URL for self-hosted instances")
 
 
-class CodeRepositoryRes(BaseResponseData):
+class GitLabRepoInfoRes(BaseModel):
+    base_url: AnyHttpUrl = Field(..., description="Base URL for the GitLab instance")
+
+
+class GitHubCodeRepositoryRes(BaseResponseData):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="Code repository ID")
-    provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
-    repo_info: RepoInfoRes = Field(..., description="Repository information")
+    provider: Literal["github"] = Field(default="github", description="Source control provider")
+    repo_info: GitHubRepoInfoRes = Field(..., description="GitHub repository information")
     is_active: bool = Field(..., description="Whether the repository is active")
     created_at: datetime = Field(..., description="Creation time")
     updated_at: datetime = Field(..., description="Update time")
+
+
+class GitLabCodeRepositoryRes(BaseResponseData):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(..., description="Code repository ID")
+    provider: Literal["gitlab"] = Field(default="gitlab", description="Source control provider")
+    repo_info: GitLabRepoInfoRes = Field(..., description="GitLab repository information")
+    is_active: bool = Field(..., description="Whether the repository is active")
+    created_at: datetime = Field(..., description="Creation time")
+    updated_at: datetime = Field(..., description="Update time")
+
+
+CodeRepositoryRes = GitHubCodeRepositoryRes | GitLabCodeRepositoryRes
 
 
 class CodeRepositoryListRes(BaseResponseData):
@@ -58,10 +85,9 @@ class SourceControlAccessTokenRes(BaseResponseData):
     access_token: str = Field(..., description="Access token for the source control provider")
     token_type: str = Field(default="Bearer", description="Token type")
     expires_at: datetime | None = Field(default=None, description="Token expiration time")
-    repo_url: AnyHttpUrl = Field(..., description="Repository URL of the project")
+    repo_url: AnyHttpUrl | None = Field(default=None, description="Resolved repository URL")
 
 
-# Legacy aliases for backwards compatibility
 ScmConnectionCreateReq = CodeRepositoryCreateReq
 ScmConnectionRes = CodeRepositoryRes
 ScmConnectionListRes = CodeRepositoryListRes

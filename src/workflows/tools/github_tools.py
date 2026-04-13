@@ -23,35 +23,45 @@ class SourceControlContext(TypedDict):
     repo_file_paths: NotRequired[list[str]]
 
 
-# Cache for source control contexts, keyed by repository_id
+# Cache for source control contexts, keyed by repository target
 SOURCE_CONTROL_CACHE: dict[str, SourceControlContext] = {}
 
 
-def _get_cache_key(repository_id: int) -> str:
-    """Generate cache key for a repository."""
+def _get_cache_key(repository_id: int, repository_url: str | None = None) -> str:
+    """Generate cache key for a repository target."""
+    if repository_url:
+        return f"source_control_{repository_id}_{repository_url}"
     return f"source_control_{repository_id}"
 
 
-def _get_cached_context(repository_id: int) -> tuple[str, SourceControlContext | None]:
+def _get_cached_context(
+    repository_id: int,
+    repository_url: str | None = None,
+) -> tuple[str, SourceControlContext | None]:
     """Get cached context for a repository if it exists."""
-    cache_key = _get_cache_key(repository_id)
+    cache_key = _get_cache_key(repository_id, repository_url)
     return cache_key, SOURCE_CONTROL_CACHE.get(cache_key)
 
 
-async def get_source_control_cache_key(repository_id: int, repository_url: str | None = None) -> str:
+async def get_source_control_cache_key(
+    repository_id: int,
+    provider: str,
+    repository_url: str | None = None,
+) -> str:
     """Get or create a cached source control context for the repository.
 
     This function is provider-agnostic and works with any supported source control
     provider (GitHub, GitLab, etc.).
 
     Args:
-        repository_id: The ID of the repository in the database
-        repository_url: Optional repository URL (if provided, uses this instead of building from DB)
+        repository_id: The ID of the repository configuration in the database
+        provider: Source control provider for the analyze request
+        repository_url: Optional repository URL override for provider-specific flows
 
     Returns:
         Cache key for the source control context
     """
-    cache_key, cached_context = _get_cached_context(repository_id)
+    cache_key, cached_context = _get_cached_context(repository_id, repository_url)
     if cached_context:
         return cache_key
 
@@ -59,6 +69,7 @@ async def get_source_control_cache_key(repository_id: int, repository_url: str |
         source_control_service = SourceControlService(session)
         client, access_token, repo_url = await source_control_service.get_client_for_repository(
             repository_id,
+            provider,
             repository_url,
         )
 
@@ -218,5 +229,4 @@ def get_repository_content(
     }
 
 
-# Legacy aliases for backwards compatibility
 INSTALLATION_TOKEN_CACHE = SOURCE_CONTROL_CACHE

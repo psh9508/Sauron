@@ -22,6 +22,45 @@ class InvalidSourceControlRepositoryUrlError(AppBaseError):
 
 
 @dataclass
+class SourceControlProviderMismatchError(AppBaseError):
+    request_provider: str
+    repository_provider: str
+
+    status_code = 400
+    code = "SourceControlProviderMismatchError"
+    message = "Analyze request provider does not match repository provider"
+
+
+@dataclass
+class GitLabRepositoryUrlRequiredError(AppBaseError):
+    repository_id: int
+
+    status_code = 400
+    code = "GitLabRepositoryUrlRequiredError"
+    message = "GitLab analyze requests require repository_url"
+
+
+@dataclass
+class GitLabRepositoryUrlHostMismatchError(AppBaseError):
+    repository_id: int
+    repository_url: str
+    base_url: str
+
+    status_code = 400
+    code = "GitLabRepositoryUrlHostMismatchError"
+    message = "GitLab repository_url host does not match configured base_url"
+
+
+@dataclass
+class InvalidGitLabRepositoryConfigurationError(AppBaseError):
+    repository_id: int
+
+    status_code = 500
+    code = "InvalidGitLabRepositoryConfigurationError"
+    message = "GitLab repository configuration is invalid"
+
+
+@dataclass
 class DuplicateCodeRepositoryError(AppBaseError):
     status_code = 409
     code = "DuplicateCodeRepositoryError"

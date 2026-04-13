@@ -4,12 +4,13 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apis.models.AnalyzeRequest import AnalyzeJobAcceptedRes, AnalyzeJobRes, AnalyzeRequest
+from src.apis.models.AnalyzeRequest import AnalyzeJobAcceptedRes, AnalyzeJobRes, AnalyzeRequestPayload
 from src.repositories.analyze_job_repository import AnalyzeJobRepository
 from src.repositories.analyze_job_result_repository import AnalyzeJobResultRepository
 from src.repositories.schemas.analyze_job import AnalyzeJob
 from src.repositories.schemas.analyze_job_result import AnalyzeJobResult
 from src.services.exceptions import AnalyzeJobNotFoundError
+from src.services.source_control_service import SourceControlService
 
 
 class AnalyzeJobService:
@@ -18,12 +19,15 @@ class AnalyzeJobService:
         self.analyze_job_repo = AnalyzeJobRepository(session)
         self.analyze_job_result_repo = AnalyzeJobResultRepository(session)
 
-    async def acreate_job(self, request: AnalyzeRequest) -> AnalyzeJobAcceptedRes:
+    async def acreate_job(self, request: AnalyzeRequestPayload) -> AnalyzeJobAcceptedRes:
+        source_control_service = SourceControlService(self.session)
+        # await source_control_service.avalidate_analyze_request(request)
+
         job_id = uuid4()
         created_job = await self.analyze_job_repo.acreate(
             job_id=job_id,
             repository_id=request.repository_id,
-            request=request.model_dump(),
+            request=request.model_dump(mode="json"),
         )
         return AnalyzeJobAcceptedRes(
             job_id=created_job.id,

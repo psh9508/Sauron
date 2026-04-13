@@ -1,7 +1,14 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from pydantic import BaseModel
 
 from src.services.source_control_models import IssuedAccessToken
+
+if TYPE_CHECKING:
+    from typing import Type
 
 
 @dataclass
@@ -93,3 +100,143 @@ class SourceControlClient(ABC):
             Full repository URL for this provider
         """
         raise NotImplementedError
+
+    @abstractmethod
+    def validate_repo_info(self, repo_info: dict[str, str]) -> None:
+        """Validate required fields in repo_info for this provider.
+
+        Args:
+            repo_info: Dictionary containing provider-specific repository info
+
+        Raises:
+            ValueError: If required fields are missing
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def to_repo_info_response(self, repo_info: dict[str, str]) -> BaseModel:
+        """Convert repo_info to response format, excluding sensitive data.
+
+        Args:
+            repo_info: Dictionary containing repository info with auth_config
+
+        Returns:
+            Provider-specific RepoInfoRes model for API response
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def to_repository_response(
+        self,
+        id: int,
+        repo_info: dict[str, str],
+        is_active: bool,
+        created_at: datetime,
+        updated_at: datetime,
+    ) -> BaseModel:
+        """Convert repository data to full API response model.
+
+        Args:
+            id: Repository ID
+            repo_info: Dictionary containing repository info
+            is_active: Whether the repository is active
+            created_at: Creation timestamp
+            updated_at: Update timestamp
+
+        Returns:
+            Provider-specific CodeRepositoryRes model for API response
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    @abstractmethod
+    def build_repo_info_dict(
+        repo_info: BaseModel,
+        encrypted_auth_config: dict[str, str],
+    ) -> dict[str, str]:
+        """Build repo_info dictionary for database storage.
+
+        Args:
+            repo_info: Provider-specific RepoInfo request model
+            encrypted_auth_config: Encrypted authentication configuration
+
+        Returns:
+            Dictionary to be stored in database
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def resolve_repo_url(
+        self,
+        repository_id: int,
+        repo_info: dict[str, str],
+        repository_url: str | None,
+    ) -> str:
+        """Resolve and validate repository URL for this provider.
+
+        Args:
+            repository_id: Repository ID for error messages
+            repo_info: Repository info from database
+            repository_url: Optional repository URL from request
+
+        Returns:
+            Resolved repository URL
+
+        Raises:
+            Provider-specific exceptions for invalid configurations
+        """
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def create_client(
+        cls,
+        auth_config: dict[str, str],
+        repo_url: str,
+        base_url: str | None = None,
+    ) -> "SourceControlClient":
+        """Factory method to create a client instance.
+
+        Args:
+            auth_config: Decrypted authentication configuration
+            repo_url: Repository URL
+            base_url: Optional base URL for self-hosted instances
+
+        Returns:
+            Configured client instance
+        """
+        raise NotImplementedError
+
+
+# Client registry for factory pattern
+_CLIENT_REGISTRY: dict[str, type["SourceControlClient"]] = {}
+
+
+def register_client(provider: str):
+    """Decorator to register a source control client class."""
+    def decorator(cls: type["SourceControlClient"]) -> type["SourceControlClient"]:
+        _CLIENT_REGISTRY[provider.lower()] = cls
+        return cls
+    return decorator
+
+
+def get_client_class(provider: str) -> type["SourceControlClient"]:
+    """Get the client class for a provider."""
+    from src.services.exceptions.source_control_exception import UnsupportedSourceControlProviderError
+
+    normalized_provider = provider.strip().lower()
+    client_class = _CLIENT_REGISTRY.get(normalized_provider)
+    if client_class is None:
+        raise UnsupportedSourceControlProviderError(provider=normalized_provider)
+    return client_class
+
+
+def create_source_control_client(
+    provider: str,
+    auth_config: dict[str, str],
+    repo_url: str,
+    base_url: str | None = None,
+) -> "SourceControlClient":
+    """Factory function to create a source control client."""
+    client_class = get_client_class(provider)
+    return client_class.create_client(auth_config, repo_url, base_url)
