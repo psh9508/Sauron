@@ -1,35 +1,22 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, BaseModel, Field, TypeAdapter
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 from src.apis.models.base_response_model import BaseResponseData
 
 
-class BaseAnalyzeRequest(BaseModel):
-    provider: Literal["github", "gitlab"] = Field(..., description="Source control provider")
+class AnalyzeRequest(BaseModel):
+    """Analyze request model.
+
+    - repository_id: Used to lookup provider from database
+    - repository_url: Required for GitLab, ignored for GitHub
+    """
     repository_id: int = Field(..., description="Source control repository configuration ID")
+    repository_url: AnyHttpUrl | None = Field(default=None, description="Repository URL (required for GitLab)")
     error_message: str = Field(..., description="Error message to analyze")
     stack_trace: str = Field(..., description="Stack trace of the error")
-
-
-class GitHubAnalyzeRequest(BaseAnalyzeRequest):
-    provider: Literal["github"] = Field(default="github", description="Source control provider")
-
-
-class GitLabAnalyzeRequest(BaseAnalyzeRequest):
-    provider: Literal["gitlab"] = Field(default="gitlab", description="Source control provider")
-    repository_url: AnyHttpUrl = Field(..., description="GitLab repository URL to analyze")
-
-
-AnalyzeRequestPayload = GitHubAnalyzeRequest | GitLabAnalyzeRequest
-AnalyzeRequest = Annotated[AnalyzeRequestPayload, Field(discriminator="provider")]
-_ANALYZE_REQUEST_ADAPTER = TypeAdapter(AnalyzeRequest)
-
-
-def parse_analyze_request(payload: object) -> AnalyzeRequestPayload:
-    return _ANALYZE_REQUEST_ADAPTER.validate_python(payload)
 
 
 class AnalyzeJobAcceptedRes(BaseResponseData):

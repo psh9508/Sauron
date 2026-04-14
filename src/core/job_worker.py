@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from src.apis.models.AnalyzeRequest import parse_analyze_request
+from src.apis.models.AnalyzeRequest import AnalyzeRequest
 from src.core.database import init_db_session, session_scope
 from src.services.analyze_job_service import AnalyzeJobService
 from src.services.analyze_service import run_analyze
@@ -28,7 +28,7 @@ class AnalyzeJobWorker:
                 await asyncio.sleep(self.interval_seconds)
                 continue
 
-            request = parse_analyze_request(claimed_job.request)
+            request = AnalyzeRequest.model_validate(claimed_job.request)
 
             try:
                 result_content = await run_analyze(request)

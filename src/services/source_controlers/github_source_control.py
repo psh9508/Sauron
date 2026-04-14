@@ -28,12 +28,12 @@ class GitHubSourceControl(SourceControlClient):
     ) -> None:
         self.app_id = app_id or os.getenv("GITHUB_APP_ID")
         self.installation_id = installation_id or os.getenv("GITHUB_INSTALLATION_ID")
-        self.pem_contents = self._load_pem_contents(pem_contents or os.getenv("GITHUB_PEM"))
+        self._raw_pem_contents = pem_contents or os.getenv("GITHUB_PEM")
 
     def issue_access_token(self, repo_url: str) -> IssuedAccessToken:
         github_app_jwt = JwtLogic.create_github_app_jwt(
             app_id=self._get_app_id(),
-            private_key=self.pem_contents,
+            private_key=self._get_pem_contents(),
         )
         request_body = json.dumps({
             "repositories": [self._extract_repository_name(repo_url)],
@@ -87,7 +87,9 @@ class GitHubSourceControl(SourceControlClient):
         installation_id = self._get_installation_id()
         return f"https://api.github.com/app/installations/{installation_id}/access_tokens"
 
-    def _load_pem_contents(self, pem_contents: str | None) -> str:
+    def _get_pem_contents(self) -> str:
+        """Get and validate PEM contents. Only called when authentication is needed."""
+        pem_contents = self._raw_pem_contents
         if not pem_contents or pem_contents == "NONE":
             raise ValueError("GITHUB_PEM must be set to PEM contents.")
 

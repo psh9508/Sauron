@@ -2,7 +2,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apis.models.AnalyzeRequest import AnalyzeRequestPayload
+from src.apis.models.AnalyzeRequest import AnalyzeRequest
 from src.apis.models.source_control import (
     CodeRepositoryCreateReqPayload,
     CodeRepositoryListRes,
@@ -39,7 +39,7 @@ class SourceControlService:
         auth_config_dict = request.repo_info.auth_config.model_dump()
         encrypted_auth_config = ScmAuthCipher.encrypt_auth_config(request.provider, auth_config_dict)
 
-        # Client가 repo_info_dict 생성을 담당
+        # Delegate repo_info_dict creation to client
         client_class = get_client_class(request.provider)
         repo_info_dict = client_class.build_repo_info_dict(request.repo_info, encrypted_auth_config)
 
@@ -49,12 +49,11 @@ class SourceControlService:
         )
         return self._to_repository_res(created_repo)
 
-    async def avalidate_analyze_request(self, request: AnalyzeRequestPayload) -> None:
+    async def avalidate_analyze_request(self, request: AnalyzeRequest) -> None:
+        """Validate analyze request by resolving provider from DB."""
         code_repo = await self._get_active_repository(request.repository_id)
-        self._validate_provider_match(request.provider, code_repo.provider)
 
-        # Client가 URL 검증을 담당
-        repository_url = getattr(request, "repository_url", None)
+        # Delegate URL validation to client
         client = create_source_control_client(
             provider=code_repo.provider,
             auth_config={},
@@ -63,7 +62,7 @@ class SourceControlService:
         client.resolve_repo_url(
             repository_id=code_repo.id,
             repo_info=code_repo.repo_info,
-            repository_url=str(repository_url) if repository_url is not None else None,
+            repository_url=str(request.repository_url) if request.repository_url is not None else None,
         )
 
     async def issue_access_token(
@@ -161,7 +160,7 @@ class SourceControlService:
             code_repo.repo_info.get("auth_config", {}),
         )
 
-        # Client 생성 후 URL 해석을 위임
+        # Delegate URL resolution to client
         client = create_source_control_client(
             provider=resolved_provider,
             auth_config=decrypted_auth_config,
@@ -189,7 +188,7 @@ class SourceControlService:
     def _to_repository_res(self, code_repo: Any) -> CodeRepositoryRes:
         provider = code_repo.provider.strip().lower()
 
-        # Client가 전체 Response 생성을 담당
+        # Delegate full response creation to client
         client = create_source_control_client(
             provider=provider,
             auth_config={},

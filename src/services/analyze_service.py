@@ -1,7 +1,7 @@
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
-from src.apis.models.AnalyzeRequest import AnalyzeRequestPayload
+from src.apis.models.AnalyzeRequest import AnalyzeRequest
 from src.config import get_settings
 from src.workflows.models.base_context import BaseContext
 from src.workflows.templates.sauron_agent_system_prompt import SAURON_SYSTEM_PROMPT
@@ -49,7 +49,7 @@ def _extract_final_response(data: dict) -> str:
     raise RuntimeError("Final AI response was not found in workflow output")
 
 
-async def run_analyze(request: AnalyzeRequestPayload) -> str:
+async def run_analyze(request: AnalyzeRequest) -> str:
     data = await analyze_workflow.ainvoke(
         {
             "messages": [

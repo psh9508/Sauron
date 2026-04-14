@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apis.models.AnalyzeRequest import AnalyzeJobAcceptedRes, AnalyzeJobRes, AnalyzeRequestPayload
+from src.apis.models.AnalyzeRequest import AnalyzeJobAcceptedRes, AnalyzeJobRes, AnalyzeRequest
 from src.repositories.analyze_job_repository import AnalyzeJobRepository
 from src.repositories.analyze_job_result_repository import AnalyzeJobResultRepository
 from src.repositories.schemas.analyze_job import AnalyzeJob
@@ -19,7 +19,7 @@ class AnalyzeJobService:
         self.analyze_job_repo = AnalyzeJobRepository(session)
         self.analyze_job_result_repo = AnalyzeJobResultRepository(session)
 
-    async def acreate_job(self, request: AnalyzeRequestPayload) -> AnalyzeJobAcceptedRes:
+    async def acreate_job(self, request: AnalyzeRequest) -> AnalyzeJobAcceptedRes:
         source_control_service = SourceControlService(self.session)
         # await source_control_service.avalidate_analyze_request(request)
 

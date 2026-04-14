@@ -45,17 +45,15 @@ def _get_cached_context(
 
 async def get_source_control_cache_key(
     repository_id: int,
-    provider: str,
     repository_url: str | None = None,
 ) -> str:
     """Get or create a cached source control context for the repository.
 
     This function is provider-agnostic and works with any supported source control
-    provider (GitHub, GitLab, etc.).
+    provider (GitHub, GitLab, etc.). Provider is resolved from database.
 
     Args:
         repository_id: The ID of the repository configuration in the database
-        provider: Source control provider for the analyze request
         repository_url: Optional repository URL override for provider-specific flows
 
     Returns:
@@ -68,9 +66,8 @@ async def get_source_control_cache_key(
     async with database.session_scope() as session:
         source_control_service = SourceControlService(session)
         client, access_token, repo_url = await source_control_service.get_client_for_repository(
-            repository_id,
-            provider,
-            repository_url,
+            repository_id=repository_id,
+            repository_url=repository_url,
         )
 
     if not access_token or not repo_url:
