@@ -17,6 +17,7 @@ class AnalyzeRequest(BaseModel):
     repository_url: AnyHttpUrl | None = Field(default=None, description="Repository URL (required for GitLab)")
     error_message: str = Field(..., description="Error message to analyze")
     stack_trace: str = Field(..., description="Stack trace of the error")
+    breadcrumbs: list[dict] = Field(default=[], description="Log records leading up to the error")
 
 
 class AnalyzeJobAcceptedRes(BaseResponseData):
