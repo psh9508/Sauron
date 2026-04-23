@@ -1,14 +1,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
 from src.services.source_control_models import IssuedAccessToken
-
-if TYPE_CHECKING:
-    from typing import Type
 
 
 @dataclass
