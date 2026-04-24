@@ -7,17 +7,38 @@ from pydantic import AnyHttpUrl, BaseModel, Field
 from src.apis.models.base_response_model import BaseResponseData
 
 
-class AnalyzeRequest(BaseModel):
-    """Analyze request model.
+class StackFrame(BaseModel):
+    filename: str
+    lineno: int
+    function: str
+    code: str
 
-    - repository_id: Used to lookup provider from database
-    - repository_url: Required for GitLab, ignored for GitHub
-    """
+
+class ExceptionDetail(BaseModel):
+    type: str
+    value: str
+    category: str | None = None
+    stacktrace: list[StackFrame] = Field(default=[])
+
+
+class AnalyzeRequest(BaseModel):
     repository_id: int = Field(..., description="Source control repository configuration ID")
     repository_url: AnyHttpUrl | None = Field(default=None, description="Repository URL (required for GitLab)")
-    error_message: str = Field(..., description="Error message to analyze")
-    stack_trace: str = Field(..., description="Stack trace of the error")
+    exception: ExceptionDetail
     breadcrumbs: list[dict] = Field(default=[], description="Log records leading up to the error")
+
+    @property
+    def error_message(self) -> str:
+        return f"{self.exception.type}: {self.exception.value}"
+
+    @property
+    def stack_trace(self) -> str:
+        lines = ["Traceback (most recent call last):"]
+        for frame in self.exception.stacktrace:
+            lines.append(f'  File "{frame.filename}", line {frame.lineno}, in {frame.function}')
+            lines.append(f"    {frame.code}")
+        lines.append(self.error_message)
+        return "\n".join(lines)
 
 
 class AnalyzeJobAcceptedRes(BaseResponseData):
