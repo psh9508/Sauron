@@ -50,16 +50,17 @@ def _extract_final_response(data: dict) -> str:
 
 
 async def run_analyze(request: AnalyzeRequest) -> str:
+    parts = [
+        "Analyze the following application error.\n",
+        f"error_message:\n{request.error_message}",
+    ]
+    if request.stack_trace:
+        parts.append(f"\nstack_trace:\n{request.stack_trace}")
+
     data = await analyze_workflow.ainvoke(
         {
             "messages": [
-                HumanMessage(
-                    content=(
-                        "Analyze the following application error.\n\n"
-                        f"error_message:\n{request.error_message}\n\n"
-                        f"stack_trace:\n{request.stack_trace}"
-                    )
-                )
+                HumanMessage(content="\n".join(parts))
             ]
         },
         config=RunnableConfig(),

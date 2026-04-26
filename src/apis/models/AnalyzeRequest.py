@@ -11,39 +11,53 @@ class StackFrame(BaseModel):
     filename: str
     lineno: int
     function: str
-    code: str
+    code: str | None = None
 
 
-class ExceptionDetail(BaseModel):
+class EventDetail(BaseModel):
     type: str
     value: str
-    category: str | None = None
     stacktrace: list[StackFrame] = Field(default=[])
 
 
 class AnalyzeRequest(BaseModel):
     repository_id: int = Field(..., description="Source control repository configuration ID")
     repository_url: AnyHttpUrl | None = Field(default=None, description="Repository URL (required for GitLab)")
-    exception: ExceptionDetail
+    fingerprint: str = Field(..., min_length=32, max_length=32)
+    event: EventDetail
     breadcrumbs: list[dict] = Field(default=[], description="Log records leading up to the error")
 
     @property
+    def event_type(self) -> str:
+        if self.event.stacktrace:
+            return "exception"
+        return "message"
+
+    @property
     def error_message(self) -> str:
-        return f"{self.exception.type}: {self.exception.value}"
+        return f"{self.event.type}: {self.event.value}"
 
     @property
     def stack_trace(self) -> str:
+        if not self.event.stacktrace:
+            return ""
         lines = ["Traceback (most recent call last):"]
-        for frame in self.exception.stacktrace:
+        for frame in self.event.stacktrace:
             lines.append(f'  File "{frame.filename}", line {frame.lineno}, in {frame.function}')
-            lines.append(f"    {frame.code}")
-        lines.append(self.error_message)
+            if frame.code:
+                lines.append(f"    {frame.code}")
+        lines.append(f"{self.event.type}: {self.event.value}")
         return "\n".join(lines)
 
 
 class AnalyzeJobAcceptedRes(BaseResponseData):
     job_id: UUID = Field(..., description="Analyze job ID")
     status: Literal["queued"] = Field(default="queued", description="Analyze job status")
+
+
+class AnalyzeJobExistingRes(BaseResponseData):
+    job_id: UUID = Field(..., description="Existing analyze job ID")
+    event_count: int = Field(..., description="Total occurrence count for this fingerprint")
 
 
 class AnalyzeJobRes(BaseResponseData):

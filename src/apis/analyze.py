@@ -1,8 +1,14 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import JSONResponse
 
-from src.apis.models.AnalyzeRequest import AnalyzeJobAcceptedRes, AnalyzeJobRes, AnalyzeRequest
+from src.apis.models.AnalyzeRequest import (
+    AnalyzeJobAcceptedRes,
+    AnalyzeJobExistingRes,
+    AnalyzeJobRes,
+    AnalyzeRequest,
+)
 from src.apis.models.base_response_model import BaseResponseModel
 from src.factories.analyze_job import get_analyze_job_service
 from src.services.analyze_job_service import AnalyzeJobService
@@ -10,17 +16,19 @@ from src.services.analyze_job_service import AnalyzeJobService
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 
 
-@router.post(
-    "",
-    response_model=BaseResponseModel[AnalyzeJobAcceptedRes],
-    status_code=status.HTTP_202_ACCEPTED,
-)
+@router.post("")
 async def analyze(
     request: AnalyzeRequest,
     analyze_job_service: AnalyzeJobService = Depends(get_analyze_job_service),
-) -> BaseResponseModel[AnalyzeJobAcceptedRes]:
+) -> JSONResponse:
     result = await analyze_job_service.acreate_job(request)
-    return BaseResponseModel[AnalyzeJobAcceptedRes](data=result)
+
+    if isinstance(result, AnalyzeJobAcceptedRes):
+        body = BaseResponseModel[AnalyzeJobAcceptedRes](data=result)
+        return JSONResponse(content=body.model_dump(mode="json"), status_code=202)
+
+    body = BaseResponseModel[AnalyzeJobExistingRes](data=result)
+    return JSONResponse(content=body.model_dump(mode="json"), status_code=200)
 
 
 @router.get(

@@ -4,9 +4,15 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.apis.models.AnalyzeRequest import AnalyzeJobAcceptedRes, AnalyzeJobRes, AnalyzeRequest
+from src.apis.models.AnalyzeRequest import (
+    AnalyzeJobAcceptedRes,
+    AnalyzeJobExistingRes,
+    AnalyzeJobRes,
+    AnalyzeRequest,
+)
 from src.repositories.analyze_job_repository import AnalyzeJobRepository
 from src.repositories.analyze_job_result_repository import AnalyzeJobResultRepository
+from src.repositories.error_event_repository import ErrorEventRepository
 from src.repositories.schemas.analyze_job import AnalyzeJob
 from src.repositories.schemas.analyze_job_result import AnalyzeJobResult
 from src.services.exceptions import AnalyzeJobNotFoundError
@@ -18,16 +24,34 @@ class AnalyzeJobService:
         self.session = session
         self.analyze_job_repo = AnalyzeJobRepository(session)
         self.analyze_job_result_repo = AnalyzeJobResultRepository(session)
+        self.error_event_repo = ErrorEventRepository(session)
 
-    async def acreate_job(self, request: AnalyzeRequest) -> AnalyzeJobAcceptedRes:
-        source_control_service = SourceControlService(self.session)
-        # await source_control_service.avalidate_analyze_request(request)
+    async def acreate_job(
+        self,
+        request: AnalyzeRequest,
+    ) -> AnalyzeJobAcceptedRes | AnalyzeJobExistingRes:
+        error_event = await self.error_event_repo.aupsert(
+            fingerprint=request.fingerprint,
+            repository_id=request.repository_id,
+            event_type=request.event_type,
+        )
+
+        if error_event.event_count > 1:
+            return AnalyzeJobExistingRes(
+                job_id=error_event.analyze_job_id,
+                event_count=error_event.event_count,
+            )
 
         job_id = uuid4()
         created_job = await self.analyze_job_repo.acreate(
             job_id=job_id,
             repository_id=request.repository_id,
             request=request.model_dump(mode="json"),
+        )
+        await self.error_event_repo.aupdate_analyze_job_id(
+            fingerprint=request.fingerprint,
+            repository_id=request.repository_id,
+            analyze_job_id=created_job.id,
         )
         return AnalyzeJobAcceptedRes(
             job_id=created_job.id,

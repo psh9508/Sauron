@@ -43,3 +43,19 @@ CREATE INDEX IF NOT EXISTS idx_analyze_jobs_status_created_at
 
 CREATE INDEX IF NOT EXISTS idx_analyze_jobs_repository_created_at
     ON analyze_jobs (repository_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS error_events (
+    id BIGSERIAL PRIMARY KEY,
+    fingerprint VARCHAR(32) NOT NULL,
+    repository_id BIGINT NOT NULL,
+    event_type VARCHAR(20) NOT NULL,
+    event_count INT NOT NULL DEFAULT 1,
+    analyze_job_id UUID NULL,
+    first_seen TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_seen TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_error_events_fingerprint_repo
+        UNIQUE (fingerprint, repository_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_error_events_fingerprint
+    ON error_events (fingerprint);
