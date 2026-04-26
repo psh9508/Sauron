@@ -60,6 +60,22 @@ class AnalyzeJobExistingRes(BaseResponseData):
     event_count: int = Field(..., description="Total occurrence count for this fingerprint")
 
 
+class ErrorEventRes(BaseResponseData):
+    id: int = Field(..., description="Error event ID")
+    fingerprint: str = Field(..., description="Error fingerprint")
+    repository_id: int = Field(..., description="Source control repository configuration ID")
+    event_type: str = Field(..., description="Error event type")
+    event_count: int = Field(..., description="Total occurrence count")
+    first_seen: datetime = Field(..., description="First occurrence time")
+    last_seen: datetime = Field(..., description="Last occurrence time")
+    analyze_job_id: UUID | None = Field(default=None, description="Associated analyze job ID")
+    request: dict | None = Field(default=None, description="Original analyze request data")
+
+
+class ErrorEventListRes(BaseResponseData):
+    errors: list[ErrorEventRes] = Field(default=[], description="List of error events")
+
+
 class AnalyzeJobRes(BaseResponseData):
     job_id: UUID = Field(..., description="Analyze job ID")
     repository_id: int = Field(..., description="Source control repository configuration ID")

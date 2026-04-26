@@ -8,12 +8,25 @@ from src.apis.models.AnalyzeRequest import (
     AnalyzeJobExistingRes,
     AnalyzeJobRes,
     AnalyzeRequest,
+    ErrorEventListRes,
 )
 from src.apis.models.base_response_model import BaseResponseModel
 from src.factories.analyze_job import get_analyze_job_service
 from src.services.analyze_job_service import AnalyzeJobService
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
+
+
+@router.get(
+    "/errors",
+    response_model=BaseResponseModel[ErrorEventListRes],
+    status_code=status.HTTP_200_OK,
+)
+async def list_error_events(
+    analyze_job_service: AnalyzeJobService = Depends(get_analyze_job_service),
+) -> BaseResponseModel[ErrorEventListRes]:
+    result = await analyze_job_service.alist_error_events()
+    return BaseResponseModel[ErrorEventListRes](data=result)
 
 
 @router.post("")

@@ -9,6 +9,8 @@ from src.apis.models.AnalyzeRequest import (
     AnalyzeJobExistingRes,
     AnalyzeJobRes,
     AnalyzeRequest,
+    ErrorEventListRes,
+    ErrorEventRes,
 )
 from src.repositories.analyze_job_repository import AnalyzeJobRepository
 from src.repositories.analyze_job_result_repository import AnalyzeJobResultRepository
@@ -25,6 +27,24 @@ class AnalyzeJobService:
         self.analyze_job_repo = AnalyzeJobRepository(session)
         self.analyze_job_result_repo = AnalyzeJobResultRepository(session)
         self.error_event_repo = ErrorEventRepository(session)
+
+    async def alist_error_events(self) -> ErrorEventListRes:
+        rows = await self.error_event_repo.alist_with_requests()
+        errors = [
+            ErrorEventRes(
+                id=event.id,
+                fingerprint=event.fingerprint,
+                repository_id=event.repository_id,
+                event_type=event.event_type,
+                event_count=event.event_count,
+                first_seen=event.first_seen,
+                last_seen=event.last_seen,
+                analyze_job_id=event.analyze_job_id,
+                request=request,
+            )
+            for event, request in rows
+        ]
+        return ErrorEventListRes(errors=errors)
 
     async def acreate_job(
         self,

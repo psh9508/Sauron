@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.repositories.schemas.analyze_job import AnalyzeJob
 from src.repositories.schemas.error_event import ErrorEvent
 
 
@@ -54,3 +55,12 @@ class ErrorEventRepository:
             .values(analyze_job_id=analyze_job_id)
         )
         await self.session.execute(stmt)
+
+    async def alist_with_requests(self) -> list[tuple[ErrorEvent, dict | None]]:
+        stmt = (
+            select(ErrorEvent, AnalyzeJob.request)
+            .outerjoin(AnalyzeJob, ErrorEvent.analyze_job_id == AnalyzeJob.id)
+            .order_by(ErrorEvent.last_seen.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.all())
