@@ -12,10 +12,11 @@ from src.clients.llm import create_llm_client
 from src.clients.models.llm_config import LLMConfig
 from src.workflows.models.base_context import BaseContext
 from src.workflows.models.states.base_state import BaseAgentState
-from src.workflows.tools.github_tools import (
+from src.workflows.tools.source_control_tools import (
     get_source_control_cache_key,
     get_repository_file_paths,
     get_repository_content,
+    fetch_dependency_file,
 )
 
 class SauronAgent():
@@ -117,6 +118,13 @@ class SauronAgent():
         if runtime_hint_message is not None:
             messages.append(runtime_hint_message)
 
+        dep_content = state.get("dependency_file_content")
+        if dep_content:
+            messages.append(SystemMessage(content=(
+                f"Project dependency file:\n{dep_content}\n"
+                "Use this to identify exact library versions when analyzing the error."
+            )))
+
         messages.extend(state["messages"])
         return messages
 
@@ -139,11 +147,17 @@ class SauronAgent():
             stack_trace=analyze_request.stack_trace,
             repo_file_paths=repo_file_paths,
         )
-        return {
+        result: dict = {
             "installation_token_internal_key": cache_key,
             "repo_file_paths": repo_file_paths,
             "candidate_file_paths": candidate_file_paths,
         }
+
+        dep_content = fetch_dependency_file(cache_key, repo_file_paths)
+        if dep_content:
+            result["dependency_file_content"] = dep_content
+
+        return result
 
 
     async def invoke_llm(

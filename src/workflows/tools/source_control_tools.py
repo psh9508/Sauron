@@ -3,6 +3,7 @@
 This module provides provider-agnostic tools for interacting with source control
 repositories (GitHub, GitLab, etc.) through the SourceControlService abstraction.
 """
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, NotRequired, TypedDict
 
@@ -13,6 +14,8 @@ from pydantic import Field
 from src.core import database
 from src.services.source_control_service import SourceControlService
 from src.services.source_controlers.base import SourceControlClient
+
+logger = logging.getLogger(__name__)
 
 
 class SourceControlContext(TypedDict):
@@ -224,6 +227,63 @@ def get_repository_content(
         "files": files,
         "token_key": installation_cache_key,
     }
+
+
+DEPENDENCY_FILES = [
+    "pyproject.toml",
+    "requirements.txt",
+    "package.json",
+    "go.mod",
+    "Gemfile",
+    "pom.xml",
+    "build.gradle",
+    "Cargo.toml",
+    "composer.json",
+]
+
+
+def fetch_dependency_file(
+    cache_key: str,
+    repo_file_paths: list[str],
+) -> str | None:
+    """Find and fetch the first matching dependency file from the repository.
+
+    Searches root-level files first, then subdirectories.
+    Returns formatted content string or None if no dependency file is found.
+    """
+    dep_path = _find_dependency_file(repo_file_paths)
+    if not dep_path:
+        return None
+
+    context = SOURCE_CONTROL_CACHE.get(cache_key)
+    if not context:
+        return None
+
+    try:
+        result = _fetch_file_content(
+            client=context["client"],
+            access_token=context["access_token"],
+            repo_url=context["repo_url"],
+            file_path=dep_path,
+        )
+        content = result.get("content")
+        if content:
+            return f"[{dep_path}]\n{content}"
+        return None
+    except Exception:
+        logger.warning("Failed to fetch dependency file: %s", dep_path, exc_info=True)
+        return None
+
+
+def _find_dependency_file(repo_file_paths: list[str]) -> str | None:
+    for dep_file in DEPENDENCY_FILES:
+        if dep_file in repo_file_paths:
+            return dep_file
+    for dep_file in DEPENDENCY_FILES:
+        for repo_path in repo_file_paths:
+            if repo_path.endswith(f"/{dep_file}"):
+                return repo_path
+    return None
 
 
 INSTALLATION_TOKEN_CACHE = SOURCE_CONTROL_CACHE
