@@ -61,7 +61,7 @@ src/
   core/                          # Database init, job worker, auth utilities
   workflows/                     # LangGraph agent definition & tools
     v1/sauron_agent_v1.py        # Agent graph: prepare → LLM → tools loop
-    tools/github_tools.py        # SCM tools available to the agent
+    tools/source_control_tools.py # SCM tools available to the agent
     templates/                   # System prompts
 environments/                    # Per-environment config (local, dev, live)
 dependency/                      # Docker Compose & DB init scripts
