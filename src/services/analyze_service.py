@@ -56,6 +56,8 @@ async def run_analyze(request: AnalyzeRequest) -> str:
     ]
     if request.stack_trace:
         parts.append(f"\nstack_trace:\n{request.stack_trace}")
+    if request.breadcrumbs:
+        parts.append(f"\nbreadcrumbs:\n{request.breadcrumbs}")
 
     data = await analyze_workflow.ainvoke(
         {
