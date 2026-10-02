@@ -49,6 +49,19 @@ def _extract_final_response(data: dict) -> str:
     raise RuntimeError("Final AI response was not found in workflow output")
 
 
+def _format_breadcrumb(crumb: dict) -> str:
+    prefix = f"{crumb['timestamp']} " if crumb.get("timestamp") else ""
+    level = crumb.get("level") or "info"
+    category = crumb.get("category")
+    message = crumb.get("message") or ""
+    body = f"{category}: {message}" if category else message
+    return f"{prefix}[{level}] {body}"
+
+
+def _format_breadcrumbs(breadcrumbs: list[dict]) -> str:
+    return "\n".join(_format_breadcrumb(crumb) for crumb in breadcrumbs)
+
+
 async def run_analyze(request: AnalyzeRequest) -> str:
     parts = [
         "Analyze the following application error.\n",
@@ -57,7 +70,7 @@ async def run_analyze(request: AnalyzeRequest) -> str:
     if request.stack_trace:
         parts.append(f"\nstack_trace:\n{request.stack_trace}")
     if request.breadcrumbs:
-        parts.append(f"\nbreadcrumbs:\n{request.breadcrumbs}")
+        parts.append(f"\nbreadcrumbs:\n{_format_breadcrumbs(request.breadcrumbs)}")
 
     data = await analyze_workflow.ainvoke(
         {
