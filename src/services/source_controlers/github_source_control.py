@@ -320,7 +320,6 @@ class GitHubSourceControl(SourceControlClient):
     def create_client(
         cls,
         auth_config: dict[str, str],
-        repo_url: str,
         base_url: str | None = None,
     ) -> "GitHubSourceControl":
         """Factory method to create GitHubSourceControl instance."""

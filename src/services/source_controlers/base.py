@@ -188,14 +188,12 @@ class SourceControlClient(ABC):
     def create_client(
         cls,
         auth_config: dict[str, str],
-        repo_url: str,
         base_url: str | None = None,
     ) -> "SourceControlClient":
         """Factory method to create a client instance.
 
         Args:
             auth_config: Decrypted authentication configuration
-            repo_url: Repository URL
             base_url: Optional base URL for self-hosted instances
 
         Returns:
@@ -230,9 +228,8 @@ def get_client_class(provider: str) -> type["SourceControlClient"]:
 def create_source_control_client(
     provider: str,
     auth_config: dict[str, str],
-    repo_url: str,
     base_url: str | None = None,
 ) -> "SourceControlClient":
     """Factory function to create a source control client."""
     client_class = get_client_class(provider)
-    return client_class.create_client(auth_config, repo_url, base_url)
+    return client_class.create_client(auth_config, base_url)

@@ -57,7 +57,6 @@ class SourceControlService:
         client = create_source_control_client(
             provider=code_repo.provider,
             auth_config={},
-            repo_url="",
         )
         client.resolve_repo_url(
             repository_id=code_repo.id,
@@ -164,7 +163,6 @@ class SourceControlService:
         client = create_source_control_client(
             provider=resolved_provider,
             auth_config=decrypted_auth_config,
-            repo_url="",
             base_url=code_repo.repo_info.get("base_url"),
         )
 
@@ -192,7 +190,6 @@ class SourceControlService:
         client = create_source_control_client(
             provider=provider,
             auth_config={},
-            repo_url="",
         )
         return client.to_repository_response(
             id=code_repo.id,

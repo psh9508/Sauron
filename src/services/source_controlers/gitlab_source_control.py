@@ -23,19 +23,15 @@ class GitLabSourceControl(SourceControlClient):
     when ref parameter is not specified, ensuring we always get the latest code.
     """
 
-    def __init__(self, access_token: str, repo_url: str, base_url: str | None = None) -> None:
+    def __init__(self, access_token: str, base_url: str | None = None) -> None:
         self.access_token = access_token
-        self.repo_url = repo_url
-        self.base_url = base_url.rstrip("/") if base_url else self._extract_base_url(repo_url)
-        self.API_BASE_URL = f"{self.base_url}/api/v4"
+        self.base_url = base_url.rstrip("/") if base_url else None
 
-    def _extract_base_url(self, repo_url: str) -> str:
-        """Extract base URL from repository URL.
-
-        Example: https://git.nwz.kr/ntech/ai/project -> https://git.nwz.kr
-        """
-        parsed = urlparse(repo_url)
-        return f"{parsed.scheme}://{parsed.netloc}"
+    @property
+    def _api_base_url(self) -> str:
+        if not self.base_url:
+            raise RuntimeError("GitLab base_url is required to call the GitLab API.")
+        return f"{self.base_url}/api/v4"
 
     def issue_access_token(self, repo_url: str) -> IssuedAccessToken:
         """
@@ -103,7 +99,7 @@ class GitLabSourceControl(SourceControlClient):
     def get_default_branch(self, access_token: str, repo_url: str) -> str:
         """Get the default branch of the GitLab repository."""
         project_path = self._get_project_path(repo_url)
-        url = f"{self.API_BASE_URL}/projects/{project_path}"
+        url = f"{self._api_base_url}/projects/{project_path}"
 
         response = self._make_request(url)
         if not isinstance(response, dict):
@@ -137,7 +133,7 @@ class GitLabSourceControl(SourceControlClient):
         while True:
             # ref is omitted - GitLab uses default branch automatically
             url = (
-                f"{self.API_BASE_URL}/projects/{project_path}/repository/tree"
+                f"{self._api_base_url}/projects/{project_path}/repository/tree"
                 f"?recursive=true&per_page={per_page}&page={page}"
             )
 
@@ -187,7 +183,7 @@ class GitLabSourceControl(SourceControlClient):
 
         # ref is omitted - GitLab uses HEAD (default branch) automatically
         url = (
-            f"{self.API_BASE_URL}/projects/{project_path}"
+            f"{self._api_base_url}/projects/{project_path}"
             f"/repository/files/{encoded_path}/raw"
         )
 
@@ -315,12 +311,10 @@ class GitLabSourceControl(SourceControlClient):
     def create_client(
         cls,
         auth_config: dict[str, str],
-        repo_url: str,
         base_url: str | None = None,
     ) -> "GitLabSourceControl":
         """Factory method to create GitLabSourceControl instance."""
         return cls(
             access_token=auth_config.get("access_token"),
-            repo_url=repo_url,
             base_url=base_url,
         )
