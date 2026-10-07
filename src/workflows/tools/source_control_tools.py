@@ -12,6 +12,7 @@ from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
 from src.core import database
+from src.services.exceptions.source_control_exception import SourceControlAccessTokenInvalidError
 from src.services.source_control_service import SourceControlService
 from src.services.source_controlers.base import SourceControlClient
 
@@ -44,6 +45,16 @@ def _get_cached_context(
     """Get cached context for a repository if it exists."""
     cache_key = _get_cache_key(repository_id, repository_url)
     return cache_key, SOURCE_CONTROL_CACHE.get(cache_key)
+
+
+def invalidate_source_control_cache(
+    repository_id: int,
+    repository_url: str | None = None,
+) -> None:
+    """Drop the cached context for a repository target, if any."""
+    cache_key = _get_cache_key(repository_id, repository_url)
+    if SOURCE_CONTROL_CACHE.pop(cache_key, None) is not None:
+        logger.warning("Evicted source control context: %s", cache_key)
 
 
 async def get_source_control_cache_key(
@@ -270,6 +281,8 @@ def fetch_dependency_file(
         if content:
             return f"[{dep_path}]\n{content}"
         return None
+    except SourceControlAccessTokenInvalidError:
+        raise
     except Exception:
         logger.warning("Failed to fetch dependency file: %s", dep_path, exc_info=True)
         return None

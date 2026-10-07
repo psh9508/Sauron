@@ -6,10 +6,13 @@ from urllib.request import Request, urlopen
 
 from src.apis.models.source_control import GitLabCodeRepositoryRes, GitLabRepoInfoCreate, GitLabRepoInfoRes
 from src.services.exceptions.source_control_exception import (
+    GitLabInsufficientTokenScopeError,
+    GitLabProjectNotFoundError,
     GitLabRepositoryUrlHostMismatchError,
     GitLabRepositoryUrlRequiredError,
     InvalidGitLabRepositoryConfigurationError,
     InvalidSourceControlRepositoryUrlError,
+    SourceControlAccessTokenInvalidError,
 )
 from src.services.source_control_models import IssuedAccessToken
 from src.services.source_controlers.base import FileContent, RepositoryInfo, SourceControlClient, register_client
@@ -63,6 +66,14 @@ class GitLabSourceControl(SourceControlClient):
                     return content
                 return json.loads(content)
         except HTTPError as exc:
+            # 401: token itself (expired/revoked/user disabled), 403: missing scope,
+            # 404: project missing or not visible to the token (GitLab hides it)
+            if exc.code == 401:
+                raise SourceControlAccessTokenInvalidError(request_url=url) from exc
+            if exc.code == 403:
+                raise GitLabInsufficientTokenScopeError(request_url=url) from exc
+            if exc.code == 404:
+                raise GitLabProjectNotFoundError(request_url=url) from exc
             error_body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(
                 f"GitLab API request failed: {exc.code} {error_body}"

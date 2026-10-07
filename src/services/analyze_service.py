@@ -3,8 +3,14 @@ from langchain_core.runnables import RunnableConfig
 
 from src.apis.models.AnalyzeRequest import AnalyzeRequest
 from src.config import get_settings
+from src.services.exceptions.source_control_exception import (
+    GitLabInsufficientTokenScopeError,
+    GitLabProjectNotFoundError,
+    SourceControlAccessTokenInvalidError,
+)
 from src.workflows.models.base_context import BaseContext
 from src.workflows.templates.sauron_agent_system_prompt import SAURON_SYSTEM_PROMPT
+from src.workflows.tools.source_control_tools import invalidate_source_control_cache
 from src.workflows.v1.sauron_agent_v1 import SauronAgent
 
 
@@ -72,16 +78,28 @@ async def run_analyze(request: AnalyzeRequest) -> str:
     if request.breadcrumbs:
         parts.append(f"\nbreadcrumbs:\n{_format_breadcrumbs(request.breadcrumbs)}")
 
-    data = await analyze_workflow.ainvoke(
-        {
-            "messages": [
-                HumanMessage(content="\n".join(parts))
-            ]
-        },
-        config=RunnableConfig(),
-        context=BaseContext(
-            system_prompt=SAURON_SYSTEM_PROMPT,
-            analyze_request=request,
-        ),
-    )
+    try:
+        data = await analyze_workflow.ainvoke(
+            {
+                "messages": [
+                    HumanMessage(content="\n".join(parts))
+                ]
+            },
+            config=RunnableConfig(),
+            context=BaseContext(
+                system_prompt=SAURON_SYSTEM_PROMPT,
+                analyze_request=request,
+            ),
+        )
+    except (
+        SourceControlAccessTokenInvalidError,
+        GitLabInsufficientTokenScopeError,
+        GitLabProjectNotFoundError,
+    ):
+        # Cached token or repo tree is stale; reload from DB on the next job
+        invalidate_source_control_cache(
+            repository_id=request.repository_id,
+            repository_url=str(request.repository_url) if request.repository_url is not None else None,
+        )
+        raise
     return _extract_final_response(data)

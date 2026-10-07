@@ -92,3 +92,30 @@ class CodeRepositoryNotFoundError(AppBaseError):
     status_code = 404
     code = "CodeRepositoryNotFoundError"
     message = "Code repository not found"
+
+
+@dataclass
+class SourceControlAccessTokenInvalidError(AppBaseError):
+    request_url: str
+
+    status_code = 401
+    code = "SourceControlAccessTokenInvalidError"
+    message = "Source control access token is invalid: expired, revoked, or its user is disabled"
+
+
+@dataclass
+class GitLabInsufficientTokenScopeError(AppBaseError):
+    request_url: str
+
+    status_code = 403
+    code = "GitLabInsufficientTokenScopeError"
+    message = "GitLab access token lacks the required scope (read_api or read_repository)"
+
+
+@dataclass
+class GitLabProjectNotFoundError(AppBaseError):
+    request_url: str
+
+    status_code = 404
+    code = "GitLabProjectNotFoundError"
+    message = "GitLab project or file not found, or the access token cannot access the project"
