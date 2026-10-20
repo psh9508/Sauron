@@ -3,8 +3,8 @@
 This module provides provider-agnostic tools for interacting with source control
 repositories (GitHub, GitLab, etc.) through the SourceControlService abstraction.
 """
+import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, NotRequired, TypedDict
 
 from langchain_core.tools import tool
@@ -147,7 +147,7 @@ def _fetch_file_content(
 
 
 @tool
-def get_repository_content(
+async def get_repository_content(
     paths: Annotated[
         list[str],
         Field(
@@ -218,11 +218,10 @@ def get_repository_content(
     if not resolved_paths:
         raise RuntimeError("No valid repository paths were provided.")
 
-    # Fetch files in parallel
-    max_workers = min(len(resolved_paths), 8)
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(
+    # Fetch files in parallel; clients are blocking, so run each in a thread
+    files = await asyncio.gather(
+        *(
+            asyncio.to_thread(
                 _fetch_file_content,
                 client,
                 access_token,
@@ -230,8 +229,8 @@ def get_repository_content(
                 path,
             )
             for path in resolved_paths
-        ]
-        files = [future.result() for future in futures]
+        )
+    )
 
     return {
         "repo": f"{repo_info.owner}/{repo_info.repo_name}",
