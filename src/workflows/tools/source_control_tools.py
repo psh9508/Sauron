@@ -178,6 +178,9 @@ def get_repository_content(
     This function is provider-agnostic and works with any supported source control
     provider (GitHub, GitLab, etc.).
     """
+    if not paths:
+        raise RuntimeError("At least one repository path is required.")
+
     context = SOURCE_CONTROL_CACHE.get(installation_cache_key)
     if not context:
         raise RuntimeError(
@@ -188,9 +191,6 @@ def get_repository_content(
     access_token = context["access_token"]
     repo_url = context["repo_url"]
     repo_info = client.parse_repo_url(repo_url)
-
-    if not paths:
-        raise RuntimeError("At least one repository path is required.")
 
     available_paths = set(repo_file_paths)
     resolved_paths: list[str] = []
