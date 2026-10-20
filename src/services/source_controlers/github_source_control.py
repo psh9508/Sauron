@@ -278,6 +278,7 @@ class GitHubSourceControl(SourceControlClient):
     def to_repository_response(
         self,
         id: int,
+        public_key: str,
         repo_info: dict[str, str],
         is_active: bool,
         created_at: datetime,
@@ -286,6 +287,7 @@ class GitHubSourceControl(SourceControlClient):
         """Convert repository data to GitHubCodeRepositoryRes."""
         return GitHubCodeRepositoryRes(
             id=id,
+            public_key=public_key,
             provider="github",
             repo_info=self.to_repo_info_response(repo_info),
             is_active=is_active,

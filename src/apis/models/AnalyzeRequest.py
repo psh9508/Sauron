@@ -20,8 +20,7 @@ class EventDetail(BaseModel):
     stacktrace: list[StackFrame] = Field(default=[])
 
 
-class AnalyzeRequest(BaseModel):
-    repository_id: int = Field(..., description="Source control repository configuration ID")
+class AnalyzePayload(BaseModel):
     repository_url: AnyHttpUrl | None = Field(default=None, description="Repository URL (required for GitLab)")
     fingerprint: str = Field(..., min_length=32, max_length=32)
     event: EventDetail
@@ -48,6 +47,19 @@ class AnalyzeRequest(BaseModel):
                 lines.append(f"    {frame.code}")
         lines.append(f"{self.event.type}: {self.event.value}")
         return "\n".join(lines)
+
+
+class AnalyzeCreateReq(AnalyzePayload):
+    repository_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="Public key issued when the code repository was registered",
+    )
+
+
+class AnalyzeRequest(AnalyzePayload):
+    repository_id: int = Field(..., description="Source control repository configuration ID")
 
 
 class AnalyzeJobAcceptedRes(BaseResponseData):

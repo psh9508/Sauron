@@ -52,6 +52,7 @@ class GitHubCodeRepositoryRes(BaseResponseData):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="Code repository ID")
+    public_key: str = Field(..., description="Public key that apps send as repository_key on analyze requests")
     provider: Literal["github"] = Field(default="github", description="Source control provider")
     repo_info: GitHubRepoInfoRes = Field(..., description="GitHub repository information")
     is_active: bool = Field(..., description="Whether the repository is active")
@@ -63,6 +64,7 @@ class GitLabCodeRepositoryRes(BaseResponseData):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(..., description="Code repository ID")
+    public_key: str = Field(..., description="Public key that apps send as repository_key on analyze requests")
     provider: Literal["gitlab"] = Field(default="gitlab", description="Source control provider")
     repo_info: GitLabRepoInfoRes = Field(..., description="GitLab repository information")
     is_active: bool = Field(..., description="Whether the repository is active")

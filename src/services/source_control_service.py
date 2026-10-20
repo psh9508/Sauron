@@ -193,6 +193,7 @@ class SourceControlService:
         )
         return client.to_repository_response(
             id=code_repo.id,
+            public_key=code_repo.public_key,
             repo_info=code_repo.repo_info,
             is_active=code_repo.is_active,
             created_at=code_repo.created_at,

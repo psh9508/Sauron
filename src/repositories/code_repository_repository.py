@@ -1,3 +1,4 @@
+import secrets
 from typing import Any
 
 from sqlalchemy import insert, select
@@ -8,6 +9,7 @@ from src.repositories.schemas.code_repository import CodeRepository
 from src.services.exceptions.source_control_exception import (
     DuplicateCodeRepositoryError,
     CodeRepositoryNotFoundError,
+    CodeRepositoryKeyNotFoundError,
 )
 
 
@@ -27,6 +29,7 @@ class CodeRepositoryRepository:
     ) -> CodeRepository:
         try:
             stmt = insert(CodeRepository).values(
+                public_key=secrets.token_urlsafe(32),
                 provider=provider,
                 repo_info=repo_info,
             ).returning(CodeRepository)
@@ -46,5 +49,18 @@ class CodeRepositoryRepository:
 
         if code_repository is None:
             raise CodeRepositoryNotFoundError(repository_id=repository_id)
+
+        return code_repository
+
+    async def aget_active_by_public_key(self, public_key: str) -> CodeRepository:
+        stmt = select(CodeRepository).where(
+            CodeRepository.public_key == public_key,
+            CodeRepository.is_active.is_(True),
+        )
+        result = await self.session.execute(stmt)
+        code_repository = result.scalar_one_or_none()
+
+        if code_repository is None:
+            raise CodeRepositoryKeyNotFoundError()
 
         return code_repository

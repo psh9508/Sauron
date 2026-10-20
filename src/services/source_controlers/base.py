@@ -125,6 +125,7 @@ class SourceControlClient(ABC):
     def to_repository_response(
         self,
         id: int,
+        public_key: str,
         repo_info: dict[str, str],
         is_active: bool,
         created_at: datetime,
@@ -134,6 +135,7 @@ class SourceControlClient(ABC):
 
         Args:
             id: Repository ID
+            public_key: Public key issued to apps for analyze requests
             repo_info: Dictionary containing repository info
             is_active: Whether the repository is active
             created_at: Creation timestamp

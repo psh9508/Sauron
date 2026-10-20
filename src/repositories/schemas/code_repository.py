@@ -23,6 +23,7 @@ class CodeRepository(Base):
     __tablename__ = "code_repositories"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
+    public_key = Column(String(64), nullable=False, unique=True)
     provider = Column(String(20), nullable=False)
     repo_info = Column(JSONB, nullable=False)
     is_active = Column(Boolean, nullable=False, server_default="true")

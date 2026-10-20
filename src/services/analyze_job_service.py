@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apis.models.AnalyzeRequest import (
+    AnalyzeCreateReq,
     AnalyzeJobAcceptedRes,
     AnalyzeJobExistingRes,
     AnalyzeJobRes,
@@ -14,11 +15,11 @@ from src.apis.models.AnalyzeRequest import (
 )
 from src.repositories.analyze_job_repository import AnalyzeJobRepository
 from src.repositories.analyze_job_result_repository import AnalyzeJobResultRepository
+from src.repositories.code_repository_repository import CodeRepositoryRepository
 from src.repositories.error_event_repository import ErrorEventRepository
 from src.repositories.schemas.analyze_job import AnalyzeJob
 from src.repositories.schemas.analyze_job_result import AnalyzeJobResult
 from src.services.exceptions import AnalyzeJobNotFoundError
-from src.services.source_control_service import SourceControlService
 
 
 class AnalyzeJobService:
@@ -27,6 +28,7 @@ class AnalyzeJobService:
         self.analyze_job_repo = AnalyzeJobRepository(session)
         self.analyze_job_result_repo = AnalyzeJobResultRepository(session)
         self.error_event_repo = ErrorEventRepository(session)
+        self.code_repo_repository = CodeRepositoryRepository(session)
 
     async def alist_error_events(self) -> ErrorEventListRes:
         rows = await self.error_event_repo.alist_with_requests()
@@ -48,8 +50,14 @@ class AnalyzeJobService:
 
     async def acreate_job(
         self,
-        request: AnalyzeRequest,
+        create_req: AnalyzeCreateReq,
     ) -> AnalyzeJobAcceptedRes | AnalyzeJobExistingRes:
+        code_repo = await self.code_repo_repository.aget_active_by_public_key(create_req.repository_key)
+        request = AnalyzeRequest(
+            **create_req.model_dump(exclude={"repository_key"}),
+            repository_id=code_repo.id,
+        )
+
         error_event = await self.error_event_repo.aupsert(
             fingerprint=request.fingerprint,
             repository_id=request.repository_id,

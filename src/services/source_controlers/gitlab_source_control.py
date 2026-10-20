@@ -236,6 +236,7 @@ class GitLabSourceControl(SourceControlClient):
     def to_repository_response(
         self,
         id: int,
+        public_key: str,
         repo_info: dict[str, str],
         is_active: bool,
         created_at: datetime,
@@ -244,6 +245,7 @@ class GitLabSourceControl(SourceControlClient):
         """Convert repository data to GitLabCodeRepositoryRes."""
         return GitLabCodeRepositoryRes(
             id=id,
+            public_key=public_key,
             provider="gitlab",
             repo_info=self.to_repo_info_response(repo_info),
             is_active=is_active,

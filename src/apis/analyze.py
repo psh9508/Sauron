@@ -3,11 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 
-from src.apis.models.AnalyzeRequest import (
+from src.apis.models.AnalyzeRequest import (    
     AnalyzeJobAcceptedRes,
     AnalyzeJobExistingRes,
     AnalyzeJobRes,
-    AnalyzeRequest,
+    AnalyzeCreateReq,
     ErrorEventListRes,
 )
 from src.apis.models.base_response_model import BaseResponseModel
@@ -31,7 +31,7 @@ async def list_error_events(
 
 @router.post("")
 async def analyze(
-    request: AnalyzeRequest,
+    request: AnalyzeCreateReq,
     analyze_job_service: AnalyzeJobService = Depends(get_analyze_job_service),
 ) -> JSONResponse:
     result = await analyze_job_service.acreate_job(request)

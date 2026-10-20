@@ -95,6 +95,13 @@ class CodeRepositoryNotFoundError(AppBaseError):
 
 
 @dataclass
+class CodeRepositoryKeyNotFoundError(AppBaseError):
+    status_code = 404
+    code = "CodeRepositoryKeyNotFoundError"
+    message = "Code repository not found for the given repository key"
+
+
+@dataclass
 class SourceControlAccessTokenInvalidError(AppBaseError):
     request_url: str
 

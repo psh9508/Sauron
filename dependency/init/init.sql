@@ -1,10 +1,13 @@
 CREATE TABLE IF NOT EXISTS code_repositories (
     id BIGSERIAL PRIMARY KEY,
+    public_key VARCHAR(64) NOT NULL,
     provider VARCHAR(20) NOT NULL,
     repo_info JSONB NOT NULL,
     is_active BOOL NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_code_repositories_public_key
+        UNIQUE (public_key),
     CONSTRAINT ck_code_repositories_provider
         CHECK (provider IN ('github', 'gitlab'))
 );
