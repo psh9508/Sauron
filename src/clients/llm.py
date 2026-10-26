@@ -15,6 +15,8 @@ def create_llm_client(llm_config: LLMConfig) -> BaseChatModel:
     }
 
     client_kwargs.update(_get_model_provider_kwargs(llm_config.provider))
+    if llm_config.provider == "gemini" and llm_config.include_thoughts:
+        client_kwargs["include_thoughts"] = True
     
     client = init_chat_model(**client_kwargs)
     return client

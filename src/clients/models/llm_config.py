@@ -18,3 +18,7 @@ class LLMConfig(BaseModel):
         le=1.0,
         description="Model temperature",
     )
+    include_thoughts: bool = Field(
+        False,
+        description="Return thought summaries from thinking models (gemini only)",
+    )
