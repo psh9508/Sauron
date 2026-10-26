@@ -1,5 +1,8 @@
+import os
+
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langfuse.langchain import CallbackHandler
 
 from src.apis.models.AnalyzeRequest import AnalyzeRequest
 from src.config import get_settings
@@ -68,6 +71,23 @@ def _format_breadcrumbs(breadcrumbs: list[dict]) -> str:
     return "\n".join(_format_breadcrumb(crumb) for crumb in breadcrumbs)
 
 
+def _build_run_config(request: AnalyzeRequest) -> RunnableConfig:
+    callbacks = []
+    # Langfuse tracing is enabled only when its keys are configured
+    if os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"):
+        callbacks.append(CallbackHandler())
+
+    return RunnableConfig(
+        run_name="sauron_analyze",
+        callbacks=callbacks,
+        metadata={
+            "langfuse_session_id": request.fingerprint,
+            "langfuse_tags": [f"repository:{request.repository_id}", request.event_type],
+            "error_message": request.error_message,
+        },
+    )
+
+
 async def run_analyze(request: AnalyzeRequest) -> str:
     parts = [
         "Analyze the following application error.\n",
@@ -85,7 +105,7 @@ async def run_analyze(request: AnalyzeRequest) -> str:
                     HumanMessage(content="\n".join(parts))
                 ]
             },
-            config=RunnableConfig(),
+            config=_build_run_config(request),
             context=BaseContext(
                 system_prompt=SAURON_SYSTEM_PROMPT,
                 analyze_request=request,
