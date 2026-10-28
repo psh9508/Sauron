@@ -12,12 +12,13 @@ from src.services.exceptions.source_control_exception import (
     SourceControlAccessTokenInvalidError,
 )
 from src.workflows.models.base_context import BaseContext
-from src.workflows.templates.sauron_agent_system_prompt import SAURON_SYSTEM_PROMPT
+from src.workflows.templates.sauron_agent_system_prompt import build_system_prompt
 from src.workflows.tools.source_control_tools import invalidate_source_control_cache
 from src.workflows.v1.sauron_agent_v1 import SauronAgent
 
 
 settings = get_settings()
+system_prompt = build_system_prompt(settings.language)
 
 analyze_workflow = SauronAgent(
     name="analyze_agent",
@@ -107,7 +108,7 @@ async def run_analyze(request: AnalyzeRequest) -> str:
             },
             config=_build_run_config(request),
             context=BaseContext(
-                system_prompt=SAURON_SYSTEM_PROMPT,
+                system_prompt=system_prompt,
                 analyze_request=request,
             ),
         )

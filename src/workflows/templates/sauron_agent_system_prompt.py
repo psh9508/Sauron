@@ -45,3 +45,18 @@ Output format:
 ## Summary
 - Brief cause → Brief fix (quick reference for developers).
 """
+
+
+LANGUAGE_NAMES = {
+    "en": "English",
+    "ko": "Korean",
+}
+
+
+def build_system_prompt(language: str) -> str:
+    language_name = LANGUAGE_NAMES[language]
+    return SAURON_SYSTEM_PROMPT + f"""
+Output language:
+- Write the entire final answer, including section headings, in {language_name}.
+- Keep code, file paths, identifiers, library names, and quoted error messages as-is.
+"""

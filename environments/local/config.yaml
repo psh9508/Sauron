@@ -1,3 +1,6 @@
+# Language of analysis output (en | ko)
+language: "ko"
+
 cors:
   allow_origins:
     - "http://localhost:5173"
@@ -15,6 +18,7 @@ llm:
   provider: "gemini"
   model: "gemini-3.5-flash"
   temperature: 0.3
+  include_thoughts: true
 
 source_control:
   ENCRYPTION_KEY: ${SCM_AUTH_ENCRYPTION_KEY}

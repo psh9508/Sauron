@@ -4,6 +4,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from dotenv import load_dotenv
@@ -55,6 +56,7 @@ class AppSettings(BaseModel):
             temperature=0.3,
         )
     )
+    language: Literal["en", "ko"] = Field(default="en", description="Analysis output language")
 
 
 def _resolve_environment_name() -> str:
