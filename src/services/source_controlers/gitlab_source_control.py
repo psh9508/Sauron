@@ -123,15 +123,35 @@ class GitLabSourceControl(SourceControlClient):
 
         return default_branch
 
+    def resolve_commit(self, access_token: str, repo_url: str, sha: str) -> str | None:
+        """Resolve a commit SHA in the GitLab repository."""
+        project_path = self._get_project_path(repo_url)
+        url = (
+            f"{self._api_base_url}/projects/{project_path}"
+            f"/repository/commits/{quote(sha, safe='')}"
+        )
+
+        try:
+            response = self._make_request(url)
+        except GitLabProjectNotFoundError:
+            # Unknown commit; a missing project resurfaces on the next tree request
+            return None
+
+        if not isinstance(response, dict):
+            raise RuntimeError("Unexpected response from GitLab API")
+
+        full_sha = response.get("id")
+        return full_sha if isinstance(full_sha, str) and full_sha else None
+
     def get_repository_tree(
         self,
         access_token: str,
         repo_url: str,
-        branch: str | None = None,
+        ref: str | None = None,
     ) -> list[str]:
         """Get all file paths in the GitLab repository.
 
-        When branch is None, GitLab API automatically uses the default branch,
+        When ref is None, GitLab API automatically uses the default branch,
         ensuring we always get the latest file structure.
         """
         project_path = self._get_project_path(repo_url)
@@ -142,15 +162,14 @@ class GitLabSourceControl(SourceControlClient):
         per_page = 100
 
         while True:
-            # ref is omitted - GitLab uses default branch automatically
             url = (
                 f"{self._api_base_url}/projects/{project_path}/repository/tree"
                 f"?recursive=true&per_page={per_page}&page={page}"
             )
 
             # Add ref only if explicitly specified
-            if branch:
-                url += f"&ref={quote(branch, safe='')}"
+            if ref:
+                url += f"&ref={quote(ref, safe='')}"
 
             response = self._make_request(url)
             if not isinstance(response, list):
@@ -177,6 +196,7 @@ class GitLabSourceControl(SourceControlClient):
         access_token: str,
         repo_url: str,
         file_path: str,
+        ref: str | None = None,
     ) -> FileContent:
         """Get content of a single file from GitLab repository.
 
@@ -192,11 +212,13 @@ class GitLabSourceControl(SourceControlClient):
         # GitLab requires URL-encoding for file paths
         encoded_path = quote(normalized_path, safe="")
 
-        # ref is omitted - GitLab uses HEAD (default branch) automatically
+        # Without ref, GitLab uses HEAD (default branch) automatically
         url = (
             f"{self._api_base_url}/projects/{project_path}"
             f"/repository/files/{encoded_path}/raw"
         )
+        if ref:
+            url += f"?ref={quote(ref, safe='')}"
 
         content = self._make_request(url, raw=True)
         if not isinstance(content, str):

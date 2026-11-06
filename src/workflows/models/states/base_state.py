@@ -7,5 +7,6 @@ class BaseAgentState(TypedDict):
     
     installation_token_internal_key: NotRequired[str]
     repo_file_paths: NotRequired[list[str]]
+    source_ref: NotRequired[str | None]
     candidate_file_paths: NotRequired[list[str]]
     dependency_file_content: NotRequired[str]

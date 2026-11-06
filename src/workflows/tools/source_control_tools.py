@@ -24,11 +24,15 @@ class SourceControlContext(TypedDict):
     client: SourceControlClient
     access_token: str
     repo_url: str
-    repo_file_paths: NotRequired[list[str]]
+    repo_file_paths: NotRequired[dict[str, list[str]]]
+    resolved_commits: NotRequired[dict[str, str]]
 
 
 # Cache for source control contexts, keyed by repository target
 SOURCE_CONTROL_CACHE: dict[str, SourceControlContext] = {}
+
+# Oldest commit trees are dropped beyond this many refs per repository
+MAX_CACHED_TREES_PER_REPOSITORY = 20
 
 
 def _get_cache_key(repository_id: int, repository_url: str | None = None) -> str:
@@ -98,7 +102,39 @@ async def get_source_control_cache_key(
     return cache_key
 
 
-def get_repository_file_paths(cache_key: str) -> list[str]:
+def resolve_source_ref(cache_key: str, git_commit_sha: str | None) -> str | None:
+    """Resolve the reported commit SHA to the full SHA to fetch sources at.
+
+    Returns None (default branch) when no SHA was reported or the commit is not
+    in the repository, e.g. an unpushed build or a different repository.
+    """
+    if not git_commit_sha:
+        return None
+
+    context = SOURCE_CONTROL_CACHE.get(cache_key)
+    if not context:
+        raise RuntimeError(f"Source control context not found for key: {cache_key}")
+
+    resolved_commits = context.setdefault("resolved_commits", {})
+    full_sha = resolved_commits.get(git_commit_sha)
+    if full_sha:
+        return full_sha
+
+    full_sha = context["client"].resolve_commit(
+        context["access_token"],
+        context["repo_url"],
+        git_commit_sha,
+    )
+    if not full_sha:
+        # Misses are not cached; the commit may be pushed later
+        logger.warning("Commit %s not found in %s; using default branch", git_commit_sha, context["repo_url"])
+        return None
+
+    resolved_commits[git_commit_sha] = full_sha
+    return full_sha
+
+
+def get_repository_file_paths(cache_key: str, ref: str | None = None) -> list[str]:
     """Get all file paths in the repository.
 
     This function is provider-agnostic and uses the cached source control client
@@ -106,6 +142,7 @@ def get_repository_file_paths(cache_key: str) -> list[str]:
 
     Args:
         cache_key: Cache key from get_installation_context_cache_key()
+        ref: Commit SHA to read the tree at (default branch if None)
 
     Returns:
         List of file paths in the repository
@@ -114,20 +151,26 @@ def get_repository_file_paths(cache_key: str) -> list[str]:
     if not context:
         raise RuntimeError(f"Source control context not found for key: {cache_key}")
 
+    trees = context.setdefault("repo_file_paths", {})
+    tree_key = ref or ""
+
     # Return cached paths if available
-    cached_paths = context.get("repo_file_paths")
-    if isinstance(cached_paths, list):
-        return [path for path in cached_paths if isinstance(path, str)]
+    cached_paths = trees.get(tree_key)
+    if cached_paths is not None:
+        return cached_paths
 
     # Fetch tree using the abstracted client
     client = context["client"]
     access_token = context["access_token"]
     repo_url = context["repo_url"]
 
-    repo_file_paths = client.get_repository_tree(access_token, repo_url)
+    repo_file_paths = client.get_repository_tree(access_token, repo_url, ref)
 
     # Cache the paths
-    context["repo_file_paths"] = repo_file_paths
+    trees[tree_key] = repo_file_paths
+    if len(trees) > MAX_CACHED_TREES_PER_REPOSITORY:
+        oldest_key = next(key for key in trees if key)
+        del trees[oldest_key]
     return repo_file_paths
 
 
@@ -136,9 +179,10 @@ def _fetch_file_content(
     access_token: str,
     repo_url: str,
     file_path: str,
+    ref: str | None = None,
 ) -> dict[str, str]:
     """Fetch content of a single file using the source control client."""
-    file_content = client.get_file_content(access_token, repo_url, file_path)
+    file_content = client.get_file_content(access_token, repo_url, file_path, ref)
     return {
         "path": file_content.path,
         "type": file_content.file_type,
@@ -168,6 +212,10 @@ async def get_repository_content(
     repo_file_paths: Annotated[
         list[str],
         InjectedState("repo_file_paths"),
+    ],
+    source_ref: Annotated[
+        str | None,
+        InjectedState("source_ref"),
     ],
 ) -> dict[str, object]:
     """Fetch the content of one or more repository files for the current project.
@@ -227,6 +275,7 @@ async def get_repository_content(
                 access_token,
                 repo_url,
                 path,
+                source_ref,
             )
             for path in resolved_paths
         )
@@ -255,6 +304,7 @@ DEPENDENCY_FILES = [
 def fetch_dependency_file(
     cache_key: str,
     repo_file_paths: list[str],
+    ref: str | None = None,
 ) -> str | None:
     """Find and fetch the first matching dependency file from the repository.
 
@@ -275,6 +325,7 @@ def fetch_dependency_file(
             access_token=context["access_token"],
             repo_url=context["repo_url"],
             file_path=dep_path,
+            ref=ref,
         )
         content = result.get("content")
         if content:

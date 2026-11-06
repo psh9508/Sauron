@@ -17,6 +17,7 @@ from src.workflows.tools.source_control_tools import (
     get_repository_file_paths,
     get_repository_content,
     fetch_dependency_file,
+    resolve_source_ref,
 )
 
 class SauronAgent():
@@ -105,12 +106,41 @@ class SauronAgent():
         )
 
 
+    def _build_source_ref_message(
+        self,
+        git_commit_sha: str | None,
+        source_ref: str | None,
+    ) -> SystemMessage:
+        if source_ref:
+            content = (
+                f"Repository files are fetched at commit {source_ref}, "
+                "the version of the code that raised this error."
+            )
+        elif git_commit_sha:
+            content = (
+                f"The reported commit {git_commit_sha} was not found in the repository. "
+                "Repository files are fetched from the default branch and may differ from "
+                "the code that raised this error; do not rely on exact line numbers."
+            )
+        else:
+            content = (
+                "No commit SHA was reported. Repository files are fetched from the default "
+                "branch and may differ from the code that raised this error; "
+                "do not rely on exact line numbers."
+            )
+        return SystemMessage(content=content)
+
+
     def _build_llm_messages(
         self,
         system_prompt: str,
         state: BaseAgentState,
+        git_commit_sha: str | None,
     ) -> list[BaseMessage]:
-        messages: list[BaseMessage] = [SystemMessage(content=system_prompt)]
+        messages: list[BaseMessage] = [
+            SystemMessage(content=system_prompt),
+            self._build_source_ref_message(git_commit_sha, state.get("source_ref")),
+        ]
 
         runtime_hint_message = self._build_runtime_hint_message(
             state.get("candidate_file_paths", [])
@@ -142,7 +172,8 @@ class SauronAgent():
             repository_id=analyze_request.repository_id,
             repository_url=resolved_repository_url,
         )
-        repo_file_paths = get_repository_file_paths(cache_key)
+        source_ref = resolve_source_ref(cache_key, analyze_request.git_commit_sha)
+        repo_file_paths = get_repository_file_paths(cache_key, source_ref)
         candidate_file_paths = self._extract_candidate_file_paths(
             stack_trace=analyze_request.stack_trace,
             repo_file_paths=repo_file_paths,
@@ -150,10 +181,11 @@ class SauronAgent():
         result: dict = {
             "installation_token_internal_key": cache_key,
             "repo_file_paths": repo_file_paths,
+            "source_ref": source_ref,
             "candidate_file_paths": candidate_file_paths,
         }
 
-        dep_content = fetch_dependency_file(cache_key, repo_file_paths)
+        dep_content = fetch_dependency_file(cache_key, repo_file_paths, source_ref)
         if dep_content:
             result["dependency_file_content"] = dep_content
 
@@ -168,7 +200,12 @@ class SauronAgent():
     ):
         context = getattr(runtime, "context", None)
         system_prompt = context.system_prompt if context else "You are a helpful assistant."
-        messages = self._build_llm_messages(system_prompt=system_prompt, state=state)
+        git_commit_sha = context.analyze_request.git_commit_sha if context else None
+        messages = self._build_llm_messages(
+            system_prompt=system_prompt,
+            state=state,
+            git_commit_sha=git_commit_sha,
+        )
 
         response = await self.llm_client_with_tools.ainvoke(messages, config=config)
         return {"messages": [response]}

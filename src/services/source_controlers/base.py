@@ -48,18 +48,26 @@ class SourceControlClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def resolve_commit(self, access_token: str, repo_url: str, sha: str) -> str | None:
+        """Resolve a (possibly abbreviated) commit SHA to its full SHA.
+
+        Returns None when the commit does not exist in the repository.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def get_repository_tree(
         self,
         access_token: str,
         repo_url: str,
-        branch: str | None = None,
+        ref: str | None = None,
     ) -> list[str]:
         """Get all file paths in the repository.
 
         Args:
             access_token: Access token for authentication
             repo_url: Repository URL
-            branch: Branch name (uses default branch if None)
+            ref: Branch name or commit SHA (uses default branch if None)
 
         Returns:
             List of file paths (blobs only, no directories)
@@ -72,6 +80,7 @@ class SourceControlClient(ABC):
         access_token: str,
         repo_url: str,
         file_path: str,
+        ref: str | None = None,
     ) -> FileContent:
         """Get content of a single file.
 
@@ -79,6 +88,7 @@ class SourceControlClient(ABC):
             access_token: Access token for authentication
             repo_url: Repository URL
             file_path: Path to the file relative to repository root
+            ref: Branch name or commit SHA (uses default branch if None)
 
         Returns:
             FileContent with path and decoded content

@@ -98,7 +98,7 @@ class SourceControlService:
     async def get_repository_tree(
         self,
         repository_id: int,
-        branch: str | None = None,
+        ref: str | None = None,
         provider: str | None = None,
         repository_url: str | None = None,
     ) -> list[str]:
@@ -107,7 +107,7 @@ class SourceControlService:
             provider=provider,
             repository_url=repository_url,
         )
-        return client.get_repository_tree(access_token, repo_url, branch)
+        return client.get_repository_tree(access_token, repo_url, ref)
 
     async def get_file_content(
         self,

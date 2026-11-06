@@ -184,22 +184,41 @@ class GitHubSourceControl(SourceControlClient):
 
         return default_branch
 
+    def resolve_commit(self, access_token: str, repo_url: str, sha: str) -> str | None:
+        """Resolve a commit SHA in the GitHub repository."""
+        repo_info = self.parse_repo_url(repo_url)
+        url = (
+            f"{self.API_BASE_URL}/repos/{repo_info.owner}/{repo_info.repo_name}"
+            f"/commits/{quote(sha, safe='')}"
+        )
+
+        try:
+            response = self._make_request(url, access_token)
+        except RuntimeError as exc:
+            # 404: unknown commit, 422: SHA that is not a valid commit-ish
+            if isinstance(exc.__cause__, HTTPError) and exc.__cause__.code in (404, 422):
+                return None
+            raise
+
+        full_sha = response.get("sha")
+        return full_sha if isinstance(full_sha, str) and full_sha else None
+
     def get_repository_tree(
         self,
         access_token: str,
         repo_url: str,
-        branch: str | None = None,
+        ref: str | None = None,
     ) -> list[str]:
         """Get all file paths in the GitHub repository."""
         repo_info = self.parse_repo_url(repo_url)
 
-        if branch is None:
-            branch = self.get_default_branch(access_token, repo_url)
+        if ref is None:
+            ref = self.get_default_branch(access_token, repo_url)
 
-        encoded_branch = quote(branch, safe="")
+        encoded_ref = quote(ref, safe="")
         url = (
             f"{self.API_BASE_URL}/repos/{repo_info.owner}/{repo_info.repo_name}"
-            f"/git/trees/{encoded_branch}?recursive=1"
+            f"/git/trees/{encoded_ref}?recursive=1"
         )
 
         response = self._make_request(url, access_token)
@@ -221,6 +240,7 @@ class GitHubSourceControl(SourceControlClient):
         access_token: str,
         repo_url: str,
         file_path: str,
+        ref: str | None = None,
     ) -> FileContent:
         """Get content of a single file from GitHub repository."""
         repo_info = self.parse_repo_url(repo_url)
@@ -234,6 +254,8 @@ class GitHubSourceControl(SourceControlClient):
             f"{self.API_BASE_URL}/repos/{repo_info.owner}/{repo_info.repo_name}"
             f"/contents/{encoded_path}"
         )
+        if ref:
+            url += f"?ref={quote(ref, safe='')}"
 
         response = self._make_request(
             url,
