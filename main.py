@@ -4,6 +4,7 @@ from dataclasses import asdict
 
 from fastapi import FastAPI
 from fastapi import Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from src.config import get_settings
@@ -54,7 +55,8 @@ def health():
 
 @app.exception_handler(AppBaseError)
 async def app_base_error_handler(_: Request, exc: AppBaseError):
-    error_data = asdict(exc)
+    # Error fields may hold non-JSON types such as UUID
+    error_data = jsonable_encoder(asdict(exc))
 
     return JSONResponse(
         status_code=exc.status_code,
