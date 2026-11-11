@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from src.config import get_settings
 from src.apis.analyze import router as analyze_router
 from src.apis.source_control import router as source_control_router
+from src.apis.sentry_ingest import router as sentry_ingest_router
 from src.core.database import init_db_session
 from src.core.job_worker import AnalyzeJobWorker
 from src.services.exceptions import AppBaseError
@@ -43,6 +44,7 @@ app.add_middleware(
 )
 app.include_router(analyze_router)
 app.include_router(source_control_router)
+app.include_router(sentry_ingest_router)
 
 
 @app.get("/health")

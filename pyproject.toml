@@ -17,4 +17,11 @@ dependencies = [
     "uvicorn>=0.35.0",
     "langchain-google-genai>=4.4.2",
     "langfuse>=5.0.4",
+    "brotli>=1.2.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "sentry-sdk>=2.74.0",
 ]

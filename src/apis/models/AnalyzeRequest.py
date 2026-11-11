@@ -84,16 +84,6 @@ class AnalyzeRequest(AnalyzePayload):
     repository_id: int = Field(..., description="Source control repository configuration ID")
 
 
-class AnalyzeJobAcceptedRes(BaseResponseData):
-    job_id: UUID = Field(..., description="Analyze job ID")
-    status: Literal["queued"] = Field(default="queued", description="Analyze job status")
-
-
-class AnalyzeJobExistingRes(BaseResponseData):
-    job_id: UUID = Field(..., description="Existing analyze job ID")
-    event_count: int = Field(..., description="Total occurrence count for this fingerprint")
-
-
 class ErrorEventRes(BaseResponseData):
     id: int = Field(..., description="Error event ID")
     fingerprint: str = Field(..., description="Error fingerprint")

@@ -49,6 +49,22 @@ uv run uvicorn main:app --host 127.0.0.1 --port 8002
 
 The API is available at `http://localhost:8002`. Check health at `GET /health`.
 
+### 4. Send errors with a Sentry SDK
+
+Sauron accepts events from any Sentry SDK. Register a repository to get its public key, then point the SDK's DSN at Sauron:
+
+```python
+import sentry_sdk
+
+sentry_sdk.init(
+    dsn="http://<repository_key>@localhost:8002/1",  # the project id is required by the DSN format but unused
+    release="<git commit sha>",                       # source files are read at this commit
+)
+sentry_sdk.set_tag("repository_url", "<repository url>")  # GitLab repositories only
+```
+
+Exceptions and `error`/`fatal` level events are analyzed; other levels are accepted and ignored. Results are available at `GET /analyze/errors` and `GET /analyze/{job_id}`.
+
 ## Project Structure
 
 ```

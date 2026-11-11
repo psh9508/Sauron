@@ -6,8 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.apis.models.AnalyzeRequest import (
     AnalyzeCreateReq,
-    AnalyzeJobAcceptedRes,
-    AnalyzeJobExistingRes,
     AnalyzeJobRes,
     AnalyzeRequest,
     ErrorEventListRes,
@@ -51,7 +49,7 @@ class AnalyzeJobService:
     async def acreate_job(
         self,
         create_req: AnalyzeCreateReq,
-    ) -> AnalyzeJobAcceptedRes | AnalyzeJobExistingRes:
+    ) -> None:
         code_repo = await self.code_repo_repository.aget_active_by_public_key(create_req.repository_key)
         request = AnalyzeRequest(
             **create_req.model_dump(exclude={"repository_key"}),
@@ -64,11 +62,9 @@ class AnalyzeJobService:
             event_type=request.event_type,
         )
 
+        # A recurring fingerprint reuses the analysis of its first occurrence
         if error_event.event_count > 1:
-            return AnalyzeJobExistingRes(
-                job_id=error_event.analyze_job_id,
-                event_count=error_event.event_count,
-            )
+            return
 
         job_id = uuid4()
         created_job = await self.analyze_job_repo.acreate(
@@ -80,10 +76,6 @@ class AnalyzeJobService:
             fingerprint=request.fingerprint,
             repository_id=request.repository_id,
             analyze_job_id=created_job.id,
-        )
-        return AnalyzeJobAcceptedRes(
-            job_id=created_job.id,
-            status="queued",
         )
 
     async def aget_job(self, job_id: UUID) -> AnalyzeJobRes:
