@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.repositories.schemas.analyze_job import AnalyzeJob, AnalyzeJobStatus
 
+MAX_ANALYZE_ATTEMPTS = 3
+
 
 class AnalyzeJobRepository:
     def __init__(self, session: AsyncSession):
@@ -56,6 +58,27 @@ class AnalyzeJobRepository:
                 started_at=claim_time,
                 attempt_count=AnalyzeJob.attempt_count + 1,
                 updated_at=claim_time,
+            )
+            .returning(AnalyzeJob)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def arequeue_failed(self, job_id: UUID) -> AnalyzeJob | None:
+        stmt = (
+            update(AnalyzeJob)
+            .where(
+                AnalyzeJob.id == job_id,
+                AnalyzeJob.status == AnalyzeJobStatus.FAILED.value,
+                AnalyzeJob.attempt_count < MAX_ANALYZE_ATTEMPTS,
+            )
+            .values(
+                status=AnalyzeJobStatus.QUEUED.value,
+                claimed_at=None,
+                started_at=None,
+                finished_at=None,
+                error_message=None,
+                updated_at=datetime.now(),
             )
             .returning(AnalyzeJob)
         )

@@ -62,9 +62,11 @@ class AnalyzeJobService:
             event_type=request.event_type,
         )
 
-        # A recurring fingerprint reuses the analysis of its first occurrence
-        if error_event.event_count > 1:
-            return
+        # A recurring fingerprint reuses its analysis job; a failed one is queued again
+        if error_event.event_count > 1 and error_event.analyze_job_id is not None:
+            if await self.analyze_job_repo.aget_by_id(error_event.analyze_job_id) is not None:
+                await self.analyze_job_repo.arequeue_failed(error_event.analyze_job_id)
+                return
 
         job_id = uuid4()
         created_job = await self.analyze_job_repo.acreate(
