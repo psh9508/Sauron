@@ -12,6 +12,7 @@ from src.apis.models.source_control import (
 from src.core.scm_pem_cipher import ScmAuthCipher
 from src.repositories.code_repository_repository import CodeRepositoryRepository
 from src.services.exceptions.source_control_exception import SourceControlProviderMismatchError
+from src.services.source_control_models import IssuedAccessToken
 from src.services.source_controlers.base import (
     FileContent,
     SourceControlClient,
@@ -87,13 +88,13 @@ class SourceControlService:
         repository_id: int,
         provider: str | None = None,
         repository_url: str | None = None,
-    ) -> tuple[SourceControlClient, str, str]:
+    ) -> tuple[SourceControlClient, IssuedAccessToken, str]:
         client, issued_access_token, repo_url, _ = await self._get_repository_access(
             repository_id=repository_id,
             provider=provider,
             repository_url=repository_url,
         )
-        return client, issued_access_token.access_token, repo_url
+        return client, issued_access_token, repo_url
 
     async def get_repository_tree(
         self,
@@ -102,12 +103,12 @@ class SourceControlService:
         provider: str | None = None,
         repository_url: str | None = None,
     ) -> list[str]:
-        client, access_token, repo_url = await self.get_client_for_repository(
+        client, issued_token, repo_url = await self.get_client_for_repository(
             repository_id=repository_id,
             provider=provider,
             repository_url=repository_url,
         )
-        return client.get_repository_tree(access_token, repo_url, ref)
+        return client.get_repository_tree(issued_token.access_token, repo_url, ref)
 
     async def get_file_content(
         self,
@@ -116,12 +117,12 @@ class SourceControlService:
         provider: str | None = None,
         repository_url: str | None = None,
     ) -> FileContent:
-        client, access_token, repo_url = await self.get_client_for_repository(
+        client, issued_token, repo_url = await self.get_client_for_repository(
             repository_id=repository_id,
             provider=provider,
             repository_url=repository_url,
         )
-        return client.get_file_content(access_token, repo_url, file_path)
+        return client.get_file_content(issued_token.access_token, repo_url, file_path)
 
     async def get_multiple_file_contents(
         self,
@@ -130,7 +131,7 @@ class SourceControlService:
         provider: str | None = None,
         repository_url: str | None = None,
     ) -> list[FileContent]:
-        client, access_token, repo_url = await self.get_client_for_repository(
+        client, issued_token, repo_url = await self.get_client_for_repository(
             repository_id=repository_id,
             provider=provider,
             repository_url=repository_url,
@@ -138,7 +139,7 @@ class SourceControlService:
 
         contents: list[FileContent] = []
         for file_path in file_paths:
-            content = client.get_file_content(access_token, repo_url, file_path)
+            content = client.get_file_content(issued_token.access_token, repo_url, file_path)
             contents.append(content)
 
         return contents

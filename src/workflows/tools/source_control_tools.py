@@ -5,6 +5,7 @@ repositories (GitHub, GitLab, etc.) through the SourceControlService abstraction
 """
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, NotRequired, TypedDict
 
 from langchain_core.tools import tool
@@ -12,7 +13,11 @@ from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
 from src.core import database
-from src.services.exceptions.source_control_exception import SourceControlAccessTokenInvalidError
+from src.services.exceptions.source_control_exception import (
+    GitLabInsufficientTokenScopeError,
+    GitLabProjectNotFoundError,
+    SourceControlAccessTokenInvalidError,
+)
 from src.services.source_control_service import SourceControlService
 from src.services.source_controlers.base import SourceControlClient
 
@@ -24,6 +29,7 @@ class SourceControlContext(TypedDict):
     client: SourceControlClient
     access_token: str
     repo_url: str
+    expires_at: datetime | None
     repo_file_paths: NotRequired[dict[str, list[str]]]
     resolved_commits: NotRequired[dict[str, str]]
 
@@ -33,6 +39,9 @@ SOURCE_CONTROL_CACHE: dict[str, SourceControlContext] = {}
 
 # Oldest commit trees are dropped beyond this many refs per repository
 MAX_CACHED_TREES_PER_REPOSITORY = 20
+
+# Re-issue access tokens this long before they expire (GitHub App tokens last 1 hour)
+TOKEN_REFRESH_MARGIN = timedelta(minutes=5)
 
 
 def _get_cache_key(repository_id: int, repository_url: str | None = None) -> str:
@@ -61,6 +70,14 @@ def invalidate_source_control_cache(
         logger.warning("Evicted source control context: %s", cache_key)
 
 
+def _is_token_expiring(context: SourceControlContext) -> bool:
+    """True when the cached token expires within TOKEN_REFRESH_MARGIN (None never expires)."""
+    expires_at = context.get("expires_at")
+    if expires_at is None:
+        return False
+    return expires_at - TOKEN_REFRESH_MARGIN <= datetime.now(timezone.utc)
+
+
 async def get_source_control_cache_key(
     repository_id: int,
     repository_url: str | None = None,
@@ -78,25 +95,26 @@ async def get_source_control_cache_key(
         Cache key for the source control context
     """
     cache_key, cached_context = _get_cached_context(repository_id, repository_url)
-    if cached_context:
+    if cached_context and not _is_token_expiring(cached_context):
         return cache_key
 
     async with database.session_scope() as session:
         source_control_service = SourceControlService(session)
-        client, access_token, repo_url = await source_control_service.get_client_for_repository(
+        client, issued_token, repo_url = await source_control_service.get_client_for_repository(
             repository_id=repository_id,
             repository_url=repository_url,
         )
 
-    if not access_token or not repo_url:
+    if not issued_token.access_token or not repo_url:
         raise RuntimeError(
             "Source control service did not provide access_token or repo_url"
         )
 
     SOURCE_CONTROL_CACHE[cache_key] = {
         "client": client,
-        "access_token": access_token,
+        "access_token": issued_token.access_token,
         "repo_url": repo_url,
+        "expires_at": issued_token.expires_at,
     }
 
     return cache_key
@@ -190,6 +208,34 @@ def _fetch_file_content(
     }
 
 
+# Cached credentials or repository are unusable; let these fail the job so the
+# analyze service can invalidate the cache.
+_FATAL_SOURCE_CONTROL_ERRORS = (
+    SourceControlAccessTokenInvalidError,
+    GitLabInsufficientTokenScopeError,
+    GitLabProjectNotFoundError,
+)
+
+
+def _resolve_repository_path(path: str, repo_file_paths: list[str]) -> str | None:
+    """Map a requested path to a repository-relative path, or None if not found."""
+    normalized = path.strip().lstrip("/")
+    available_paths = set(repo_file_paths)
+    if normalized in available_paths:
+        return normalized
+
+    # Runtime path such as "/usr/src/app/order.py" -> longest repository suffix
+    segments = normalized.split("/")
+    for index in range(1, len(segments)):
+        suffix = "/".join(segments[index:])
+        if suffix in available_paths:
+            return suffix
+
+    # Partial path such as "order.py" -> the single repository path ending with it
+    matches = [p for p in repo_file_paths if p.endswith(f"/{normalized}")]
+    return matches[0] if len(matches) == 1 else None
+
+
 @tool
 async def get_repository_content(
     paths: Annotated[
@@ -199,9 +245,9 @@ async def get_repository_content(
                 "Repository-relative file paths to fetch. Infer these paths from the "
                 "stack trace, error message, and the surrounding code that may be "
                 "related to the failure. Examples: ['src/main.py'], "
-                "['app/services/pricing.py', 'app/models/order.py'], "
-                "['backend/api/orders.py', 'backend/services/order_service.py']. "
-                "Do not use absolute runtime paths such as '/app/src/main.py'."
+                "['app/services/pricing.py', 'app/models/order.py']. "
+                "Runtime paths copied from a stack trace (e.g. '/app/src/main.py') "
+                "are also accepted."
             )
         ),
     ],
@@ -221,14 +267,12 @@ async def get_repository_content(
     """Fetch the content of one or more repository files for the current project.
 
     Use the paths that most likely match the failing source files mentioned in the
-    stack trace. Each path must be relative to the repository root.
+    stack trace. A path that cannot be found or fetched is returned with an
+    `error` instead of content; the other files are still returned.
 
     This function is provider-agnostic and works with any supported source control
     provider (GitHub, GitLab, etc.).
     """
-    if not paths:
-        raise RuntimeError("At least one repository path is required.")
-
     context = SOURCE_CONTROL_CACHE.get(installation_cache_key)
     if not context:
         raise RuntimeError(
@@ -240,51 +284,25 @@ async def get_repository_content(
     repo_url = context["repo_url"]
     repo_info = client.parse_repo_url(repo_url)
 
-    available_paths = set(repo_file_paths)
-    resolved_paths: list[str] = []
-
-    for path in paths:
-        normalized_path = path.strip().lstrip("/")
-        if not normalized_path:
-            continue
-
-        if normalized_path in available_paths:
-            resolved_paths.append(normalized_path)
-            continue
-
-        # Try suffix matching for partial paths
-        suffix_matches = [
-            repo_path for repo_path in repo_file_paths
-            if repo_path.endswith(normalized_path)
-        ]
-        if len(suffix_matches) == 1:
-            resolved_paths.append(suffix_matches[0])
-            continue
-
-        raise RuntimeError(f"Repository path not found: {normalized_path}")
-
-    if not resolved_paths:
-        raise RuntimeError("No valid repository paths were provided.")
-
-    # Fetch files in parallel; clients are blocking, so run each in a thread
-    files = await asyncio.gather(
-        *(
-            asyncio.to_thread(
-                _fetch_file_content,
-                client,
-                access_token,
-                repo_url,
-                path,
-                source_ref,
+    async def fetch(path: str) -> dict[str, str]:
+        resolved_path = _resolve_repository_path(path, repo_file_paths)
+        if resolved_path is None:
+            return {"path": path, "error": "path not found in repository"}
+        try:
+            # Clients are blocking, so run each fetch in a thread
+            return await asyncio.to_thread(
+                _fetch_file_content, client, access_token, repo_url, resolved_path, source_ref,
             )
-            for path in resolved_paths
-        )
-    )
+        except _FATAL_SOURCE_CONTROL_ERRORS:
+            raise
+        except Exception as exc:
+            logger.warning("Failed to fetch repository file: %s", resolved_path, exc_info=True)
+            return {"path": path, "error": f"failed to fetch file: {exc}"}
 
+    files = await asyncio.gather(*(fetch(path) for path in paths))
     return {
         "repo": f"{repo_info.owner}/{repo_info.repo_name}",
         "files": files,
-        "token_key": installation_cache_key,
     }
 
 
