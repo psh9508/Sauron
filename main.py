@@ -24,7 +24,7 @@ async def lifespan(_: FastAPI):
 
     if settings.db is not None:
         init_db_session()
-        worker = AnalyzeJobWorker(initialize_db=False)
+        worker = AnalyzeJobWorker()
         worker_task = asyncio.create_task(worker.arun())
 
     yield

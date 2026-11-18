@@ -11,14 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 class AnalyzeJobWorker:
-    def __init__(self, interval_seconds: float = 0.5, initialize_db: bool = True):
+    def __init__(self, interval_seconds: float = 0.5):
         self.interval_seconds = interval_seconds
-        self.initialize_db = initialize_db
         self.running = False
 
     async def arun(self) -> None:
-        if self.initialize_db:
-            init_db_session()
+        init_db_session()
         self.running = True
         logger.info("Analyze job worker started")
 

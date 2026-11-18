@@ -13,6 +13,9 @@ async_session: Optional[async_sessionmaker[AsyncSession]] = None
 def init_db_session() -> None:
     global async_engine, async_session
 
+    if async_engine is not None:
+        return
+
     settings = get_settings()
     if settings.db is None:
         raise RuntimeError("Database config is not set for source control APIs.")
